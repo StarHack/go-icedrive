@@ -34,6 +34,10 @@ func EnvPassword() string {
 	return os.Getenv("ICEDRIVE_PASSWORD")
 }
 
+func EnvBearer() string {
+	return os.Getenv("ICEDRIVE_BEARER")
+}
+
 func EnvAPIHeaders() string {
 	return os.Getenv("ICEDRIVE_API_HEADERS")
 }

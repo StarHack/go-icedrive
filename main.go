@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"log"
-	"os"
 
 	"icedrive/api"
 )
@@ -11,15 +10,14 @@ import (
 func main() {
 	api.LoadEnvFile(".env")
 
-	email := api.EnvEmail()
-	password := api.EnvPassword()
-	if email == "" || password == "" {
-		log.Fatal("ICEDRIVE_EMAIL and ICEDRIVE_PASSWORD must be set")
+	if api.EnvEmail() == "" && api.EnvPassword() == "" && api.EnvBearer() == "" {
+		log.Fatal("ICEDRIVE_EMAIL and ICEDRIVE_PASSWORD OR ICEDRIVE_BEARER must be set")
 	}
 
 	client := api.NewHTTPClientWithEnv()
 
-	status, _, body, err := api.Login(client, email, password, "436f6e67726174756c6174696f6e7320494620796f7520676f742054484953206661722121203b2921203a29")
+	/*
+	status, _, body, err := api.Login(client, api.EnvEmail(), api.EnvPassword(), "436f6e67726174756c6174696f6e7320494620796f7520676f742054484953206661722121203b2921203a29")
 	if err != nil {
 		if len(body) > 0 {
 			os.Stdout.Write(body)
@@ -30,9 +28,14 @@ func main() {
 
 	fmt.Println("status:", status)
 	fmt.Println(string(body))
+	*/
 
-	userData, err := api.UserData(client)
+	api.LoginWithBearerToken(client, api.EnvBearer())
+
+
+	res, err := api.GetStorageStats(client)
 	if err != nil {
 		panic(err)
 	}
+	fmt.Println(res)
 }
