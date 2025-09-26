@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
-	"icedrive/api"
+	"github.com/StarHack/go-icedrive/api"
 )
 
 func main() {

@@ -1,4 +1,4 @@
-module icedrive
+module github.com/StarHack/go-icedrive
 
 go 1.24.0
 
