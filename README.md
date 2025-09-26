@@ -15,6 +15,8 @@ Currently supports:
 - Move File / Folder to trash
 - Empty Trash
 
+**The Encrypted section of Icedrive is not yet supported as I didn't get their Twofish implementation right yet...**
+
 ## Getting Started
 
 Copy `.env-sample` to `.env` and use your own email + password. You may then change `main.go` to use the commented out login block for a username/password login.
