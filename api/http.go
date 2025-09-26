@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 
@@ -16,19 +17,34 @@ import (
 )
 
 type HTTPClient struct {
-	c   *http.Client
-	jar http.CookieJar
+	c       *http.Client
+	jar     http.CookieJar
+	bearer  string
+	printHW bool
 }
 
 func NewHTTPClientWithEnv() *HTTPClient {
 	jar, _ := cookiejar.New(nil)
-	return &HTTPClient{
+	h := &HTTPClient{
 		c: &http.Client{
 			Timeout: 30 * time.Second,
 			Jar:     jar,
 		},
 		jar: jar,
 	}
+	if b := os.Getenv("ICEDRIVE_BEARER"); b != "" {
+		h.bearer = b
+	}
+	return h
+}
+
+func (h *HTTPClient) SetBearerToken(t string) {
+	h.bearer = t
+	os.Setenv("ICEDRIVE_BEARER", t)
+}
+
+func (h *HTTPClient) GetBearerToken() string {
+	return h.bearer
 }
 
 var headerWhitelist = []string{
@@ -48,6 +64,7 @@ var headerWhitelist = []string{
 	"Priority",
 	"TE",
 	"Content-Type",
+	"Authorization",
 }
 
 func parseEnvHeaders(hstr string) [][2]string {
@@ -106,9 +123,15 @@ func parseEnvHeaders(hstr string) [][2]string {
 	return out
 }
 
-func addEnvHeaders(req *http.Request) {
+func (h *HTTPClient) addEnvHeaders(req *http.Request) {
 	for _, kv := range parseEnvHeaders(EnvAPIHeaders()) {
+		if strings.EqualFold(kv[0], "authorization") && h.bearer != "" {
+			continue
+		}
 		req.Header.Set(kv[0], kv[1])
+	}
+	if h.bearer != "" {
+		req.Header.Set("Authorization", "Bearer "+h.bearer)
 	}
 	if ck := EnvCookie(); ck != "" && req.Header.Get("Cookie") == "" {
 		req.Header.Set("Cookie", ck)
@@ -116,9 +139,21 @@ func addEnvHeaders(req *http.Request) {
 	if req.Header.Get("User-Agent") == "" {
 		req.Header.Set("User-Agent", "Mozilla/5.0")
 	}
+	if req.Header.Get("Accept") == "" {
+		req.Header.Set("Accept", "*/*")
+	}
+	if req.Header.Get("Accept-Language") == "" {
+		req.Header.Set("Accept-Language", "en-US,en;q=0.5")
+	}
+	if req.Header.Get("Origin") == "" {
+		req.Header.Set("Origin", "https://icedrive.net")
+	}
+	if req.Header.Get("Referer") == "" {
+		req.Header.Set("Referer", "https://icedrive.net/")
+	}
 }
 
-func printHeaders(req *http.Request) {
+func (h *HTTPClient) printHeaders(req *http.Request) {
 	fmt.Println(">>> HTTP Request:", req.Method, req.URL.String())
 	for k, v := range req.Header {
 		fmt.Printf("%s: %s\n", k, strings.Join(v, "; "))
@@ -132,14 +167,14 @@ func decodeBody(res *http.Response) ([]byte, error) {
 	case "gzip":
 		zr, err := gzip.NewReader(res.Body)
 		if err != nil {
-			return nil, err
+		 return nil, err
 		}
 		defer zr.Close()
 		r = zr
 	case "deflate":
 		zr, err := zlib.NewReader(res.Body)
 		if err != nil {
-			return nil, err
+		 return nil, err
 		}
 		defer zr.Close()
 		r = zr
@@ -156,8 +191,8 @@ func (h *HTTPClient) httpGET(u string) (int, http.Header, []byte, error) {
 		h = NewHTTPClientWithEnv()
 	}
 	req, _ := http.NewRequest("GET", u, nil)
-	addEnvHeaders(req)
-	printHeaders(req)
+	h.addEnvHeaders(req)
+	h.printHeaders(req)
 	res, err := h.c.Do(req)
 	if err != nil {
 		return 0, nil, nil, err
@@ -175,11 +210,11 @@ func (h *HTTPClient) httpPOST(u string, contentType string, body []byte) (int, h
 		h = NewHTTPClientWithEnv()
 	}
 	req, _ := http.NewRequest("POST", u, bytes.NewReader(body))
-	addEnvHeaders(req)
+	h.addEnvHeaders(req)
 	if contentType != "" {
 		req.Header.Set("Content-Type", contentType)
 	}
-	printHeaders(req)
+	h.printHeaders(req)
 	res, err := h.c.Do(req)
 	if err != nil {
 		return 0, nil, nil, err

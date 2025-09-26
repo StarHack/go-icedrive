@@ -30,4 +30,9 @@ func main() {
 
 	fmt.Println("status:", status)
 	fmt.Println(string(body))
+
+	userData, err := api.UserData(client)
+	if err != nil {
+		panic(err)
+	}
 }
