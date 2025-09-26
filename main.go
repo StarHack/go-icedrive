@@ -33,7 +33,7 @@ func main() {
 	api.LoginWithBearerToken(client, api.EnvBearer())
 
 
-	res, err := api.UploadFile(client, int64(0), "hello-world.txt")
+	res, err := api.GetCollection(client, int64(0))
 	if err != nil {
 		panic(err)
 	}
