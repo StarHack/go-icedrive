@@ -33,7 +33,7 @@ func main() {
 	api.LoginWithBearerToken(client, api.EnvBearer())
 
 
-	res, err := api.TrashAdd(client, "file-3351951376")
+	res, err := api.TrashEraseAll(client)
 	if err != nil {
 		panic(err)
 	}

@@ -13,6 +13,11 @@ type TrashAddResponse struct {
 	Message string `json:"message"`
 }
 
+type TrashEraseAllResponse struct {
+	Error   bool   `json:"error"`
+	Message string `json:"message"`
+}
+
 func TrashAdd(h *HTTPClient, itemUIDs ...string) (string, error) {
 	if h == nil {
 		h = NewHTTPClientWithEnv()
@@ -41,6 +46,30 @@ func TrashAdd(h *HTTPClient, itemUIDs ...string) (string, error) {
 	}
 	if resp.Error {
 		return "", fmt.Errorf("trash-add error: %s", resp.Message)
+	}
+	return resp.Message, nil
+}
+
+func TrashEraseAll(h *HTTPClient) (string, error) {
+	if h == nil {
+		h = NewHTTPClientWithEnv()
+	}
+	if strings.TrimSpace(h.bearer) == "" {
+		return "", fmt.Errorf("missing bearer token; call Login first")
+	}
+	status, _, body, err := h.httpGET("https://apis.icedrive.net/v3/webapp/trash-erase-all")
+	if err != nil {
+		return "", err
+	}
+	if status >= 400 {
+		return "", fmt.Errorf("trash-erase-all failed with status %d", status)
+	}
+	var resp TrashEraseAllResponse
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return "", err
+	}
+	if resp.Error {
+		return "", fmt.Errorf("trash-erase-all error: %s", resp.Message)
 	}
 	return resp.Message, nil
 }
