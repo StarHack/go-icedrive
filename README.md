@@ -21,7 +21,7 @@ Currently supports:
 
 Copy `.env-sample` to `.env` and use your own email + password. You may then change `main.go` to use the commented out login block for a username/password login.
 
-```
+```go
 package main
 
 import (
