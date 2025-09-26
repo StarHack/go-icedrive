@@ -38,6 +38,10 @@ func EnvBearer() string {
 	return os.Getenv("ICEDRIVE_BEARER")
 }
 
+func EnvHmac() string {
+	return os.Getenv("ICEDRIVE_HMAC")
+}
+
 func EnvAPIHeaders() string {
 	return os.Getenv("ICEDRIVE_API_HEADERS")
 }

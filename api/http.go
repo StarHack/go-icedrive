@@ -227,6 +227,28 @@ func (h *HTTPClient) httpPOST(u string, contentType string, body []byte) (int, h
 	return res.StatusCode, res.Header, b, nil
 }
 
+func (h *HTTPClient) httpPOSTReader(u string, contentType string, body io.Reader) (int, http.Header, []byte, error) {
+	if h == nil || h.c == nil {
+		h = NewHTTPClientWithEnv()
+	}
+	req, _ := http.NewRequest("POST", u, body)
+	h.addEnvHeaders(req)
+	if contentType != "" {
+		req.Header.Set("Content-Type", contentType)
+	}
+	h.printHeaders(req)
+	res, err := h.c.Do(req)
+	if err != nil {
+		return 0, nil, nil, err
+	}
+	defer res.Body.Close()
+	b, err := decodeBody(res)
+	if err != nil {
+		return res.StatusCode, res.Header, nil, err
+	}
+	return res.StatusCode, res.Header, b, nil
+}
+
 func (h *HTTPClient) InjectEnvCookies() {
 	ck := EnvCookie()
 	if ck == "" || h.jar == nil {

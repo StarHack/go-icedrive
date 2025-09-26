@@ -17,7 +17,7 @@ func main() {
 	client := api.NewHTTPClientWithEnv()
 
 	/*
-	status, _, body, err := api.Login(client, api.EnvEmail(), api.EnvPassword(), "436f6e67726174756c6174696f6e7320494620796f7520676f742054484953206661722121203b2921203a29")
+	status, _, body, err := api.Login(client, api.EnvEmail(), api.EnvPassword(), api.EnvHmac())
 	if err != nil {
 		if len(body) > 0 {
 			os.Stdout.Write(body)
@@ -33,7 +33,7 @@ func main() {
 	api.LoginWithBearerToken(client, api.EnvBearer())
 
 
-	res, err := api.GetStorageStats(client)
+	res, err := api.UploadFile(client, int64(0), "hello-world.txt")
 	if err != nil {
 		panic(err)
 	}
