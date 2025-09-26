@@ -35,7 +35,7 @@ func randHex(n int) string {
 	return hex.EncodeToString(b)
 }
 
-func Login(h *HTTPClient, email, password, hmacKeyHex string) (int, http.Header, []byte, error) {
+func LoginWithUsernameAndPassword(h *HTTPClient, email, password, hmacKeyHex string) (int, http.Header, []byte, error) {
 	if h == nil {
 		h = NewHTTPClientWithEnv()
 	}

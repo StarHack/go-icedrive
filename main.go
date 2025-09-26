@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"log"
-
 	"icedrive/api"
 )
 
@@ -16,8 +15,9 @@ func main() {
 
 	client := api.NewHTTPClientWithEnv()
 
+	// Username / Password Login
 	/*
-	status, _, body, err := api.Login(client, api.EnvEmail(), api.EnvPassword(), api.EnvHmac())
+	status, _, body, err := api.LoginWithUsernameAndPassword(client, api.EnvEmail(), api.EnvPassword(), api.EnvHmac())
 	if err != nil {
 		if len(body) > 0 {
 			os.Stdout.Write(body)
@@ -30,12 +30,19 @@ func main() {
 	fmt.Println(string(body))
 	*/
 
+	// Login with already known Bearer token
 	api.LoginWithBearerToken(client, api.EnvBearer())
 
 
-	res, err := api.TrashEraseAll(client)
+	res, err := api.GetCollection(client, int64(0))
 	if err != nil {
 		panic(err)
 	}
 	fmt.Println(res)
+
+	err = api.DownloadFile(client, "file-3351995902", "downloads/hello-world.txt")
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println("download ok")
 }

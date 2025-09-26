@@ -42,6 +42,10 @@ func EnvHmac() string {
 	return os.Getenv("ICEDRIVE_HMAC")
 }
 
+func EnvCryptoKey() string {
+	return os.Getenv("ICEDRIVE_CRYPTO_KEY")
+}
+
 func EnvAPIHeaders() string {
 	return os.Getenv("ICEDRIVE_API_HEADERS")
 }
