@@ -18,8 +18,10 @@ Currently supports:
 **Encryption**
 
 - Encrypt and Decrypt Filenames
+- List Encrypted Folder
+- Derive Crypto Hash
 
-**The Encrypted section of Icedrive is not yet fully supported as I didn't get their Twofish key derivation right yet...**
+**The Encrypted section of Icedrive is not yet fully supported as I didn't uploads/downloads yet.**
 
 ## Getting Started
 

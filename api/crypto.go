@@ -1,12 +1,22 @@
 package api
 
 import (
+	"crypto/pbkdf2"
+	"crypto/sha1"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"net/url"
+	"strings"
 
 	"golang.org/x/crypto/twofish"
 )
+
+type cryptoAuthResp struct {
+	Error  bool   `json:"error"`
+	Method string `json:"method"`
+	Hash   string `json:"hash"`
+}
 
 const blockSize = 16
 
@@ -122,4 +132,38 @@ func EncryptFilename(keyHex string, filename string) (string, error) {
 	}
 
 	return hex.EncodeToString(ct), nil
+}
+
+func FetchCryptoSaltAndStoredHash(h *HTTPClient) (storedHex, salt string, err error) {
+	if h == nil {
+		h = NewHTTPClientWithEnv()
+	}
+	status, _, body, e := h.httpGET("https://apis.icedrive.net/v3/webapp/crypto-auth")
+	if e != nil {
+		return "", "", e
+	}
+	if status >= 400 {
+		return "", "", errors.New("crypto-auth failed")
+	}
+	var rs cryptoAuthResp
+	if err := json.Unmarshal(body, &rs); err != nil {
+		return "", "", err
+	}
+	if rs.Error || !strings.HasPrefix(rs.Hash, "ICE::") {
+		return "", "", errors.New("bad crypto-auth response")
+	}
+	t := strings.TrimPrefix(rs.Hash, "ICE::")
+	parts := strings.SplitN(t, "::", 2)
+	if len(parts) != 2 {
+		return "", "", errors.New("unexpected hash format")
+	}
+	return parts[0], parts[1], nil
+}
+
+func DeriveCryptoKey(password, salt string) (string, error) {
+	dk, err := pbkdf2.Key(sha1.New, password, []byte(salt), 50000, 32)
+	if err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(dk), nil
 }
