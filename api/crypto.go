@@ -3,8 +3,9 @@ package api
 import (
 	"encoding/hex"
 	"errors"
-	"golang.org/x/crypto/twofish"
 	"net/url"
+
+	"golang.org/x/crypto/twofish"
 )
 
 const blockSize = 16
