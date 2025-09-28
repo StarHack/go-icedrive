@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -22,7 +23,7 @@ type DownloadURLEntry struct {
 }
 
 type DownloadMultiResponse struct {
-	Error bool              `json:"error"`
+	Error bool               `json:"error"`
 	Urls  []DownloadURLEntry `json:"urls"`
 }
 
@@ -64,11 +65,11 @@ func GetDownloadURLs(h *HTTPClient, itemUIDs []string, crypto bool) ([]DownloadU
 	return resp.Urls, nil
 }
 
-func DownloadFile(h *HTTPClient, itemUID string, destPath string) error {
+func DownloadFile(h *HTTPClient, itemUID string, destPath string, crypted bool) error {
 	if h == nil {
 		h = NewHTTPClientWithEnv()
 	}
-	urls, err := GetDownloadURLs(h, []string{itemUID}, false)
+	urls, err := GetDownloadURLs(h, []string{itemUID}, crypted)
 	if err != nil {
 		return err
 	}
@@ -105,9 +106,21 @@ func DownloadFile(h *HTTPClient, itemUID string, destPath string) error {
 		return fmt.Errorf("download GET failed: %s\n%s", res.Status, string(b))
 	}
 
-	buf := make([]byte, 2<<20)
-	if _, err := io.CopyBuffer(out, res.Body, buf); err != nil {
-		return err
+	if !crypted {
+		buf := make([]byte, 2<<20)
+		if _, err := io.CopyBuffer(out, res.Body, buf); err != nil {
+			return err
+		}
+	} else {
+		fmt.Println("decrypt download 1")
+		key, err := hex.DecodeString(EnvCryptoKey64())
+		if err != nil {
+			return err
+		}
+		fmt.Println("decrypt download 2")
+		if err := DecryptTwofishCBCStream(out, res.Body, key); err != nil {
+			return err
+		}
 	}
 	if err := out.Sync(); err != nil {
 		return err

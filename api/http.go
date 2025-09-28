@@ -27,7 +27,7 @@ func NewHTTPClientWithEnv() *HTTPClient {
 	jar, _ := cookiejar.New(nil)
 	h := &HTTPClient{
 		c: &http.Client{
-			Timeout: 30 * time.Second,
+			Timeout: 600 * time.Second,
 			Jar:     jar,
 		},
 		jar: jar,
@@ -167,14 +167,14 @@ func decodeBody(res *http.Response) ([]byte, error) {
 	case "gzip":
 		zr, err := gzip.NewReader(res.Body)
 		if err != nil {
-		 return nil, err
+			return nil, err
 		}
 		defer zr.Close()
 		r = zr
 	case "deflate":
 		zr, err := zlib.NewReader(res.Body)
 		if err != nil {
-		 return nil, err
+			return nil, err
 		}
 		defer zr.Close()
 		r = zr

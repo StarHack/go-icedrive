@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/url"
 	"strings"
 
@@ -132,6 +133,89 @@ func EncryptFilename(keyHex string, filename string) (string, error) {
 	}
 
 	return hex.EncodeToString(ct), nil
+}
+
+func DecryptTwofishCBCStream(dst io.Writer, src io.Reader, key []byte) error {
+	if len(key) != 16 && len(key) != 24 && len(key) != 32 {
+		return errors.New("invalid key size")
+	}
+	block, err := twofish.NewCipher(key)
+	if err != nil {
+		return err
+	}
+	bs := block.BlockSize()
+	iv := make([]byte, bs)
+	if _, err := io.ReadFull(src, iv); err != nil {
+		return err
+	}
+	prev := make([]byte, bs)
+	copy(prev, iv)
+
+	buf := make([]byte, 1<<20)
+	var rem []byte
+	var lastPlain []byte
+
+	for {
+		n, rerr := src.Read(buf)
+		if n > 0 {
+			chunk := append(rem, buf[:n]...)
+			blocks := (len(chunk) / bs) * bs
+			toProc := blocks
+			if rerr == nil {
+				if blocks >= bs {
+					toProc = blocks - bs
+				} else {
+					toProc = 0
+				}
+			}
+			if toProc > 0 {
+				for off := 0; off < toProc; off += bs {
+					ct := chunk[off : off+bs]
+					tmp := make([]byte, bs)
+					block.Decrypt(tmp, ct)
+					for j := 0; j < bs; j++ {
+						tmp[j] ^= prev[j]
+					}
+					if _, werr := dst.Write(tmp); werr != nil {
+						return werr
+					}
+					copy(prev, ct)
+				}
+			}
+			rem = chunk[toProc:]
+			if rerr == io.EOF && len(rem) > 0 {
+				if len(rem)%bs != 0 {
+					return errors.New("trailing bytes not multiple of block size")
+				}
+				for off := 0; off < len(rem); off += bs {
+					ct := rem[off : off+bs]
+					pt := make([]byte, bs)
+					block.Decrypt(pt, ct)
+					for j := 0; j < bs; j++ {
+						pt[j] ^= prev[j]
+					}
+					lastPlain = append(lastPlain, pt...)
+					copy(prev, ct)
+				}
+				i := len(lastPlain) - 1
+				for i >= 0 && lastPlain[i] == 0x00 {
+					i--
+				}
+				if i >= 0 {
+					if _, werr := dst.Write(lastPlain[:i+1]); werr != nil {
+						return werr
+					}
+				}
+			}
+		}
+		if rerr == io.EOF {
+			break
+		}
+		if rerr != nil {
+			return rerr
+		}
+	}
+	return nil
 }
 
 func FetchCryptoSaltAndStoredHash(h *HTTPClient) (storedHex, salt string, err error) {
