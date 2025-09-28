@@ -1,6 +1,7 @@
 package api
 
 import (
+	"crypto/cipher"
 	"crypto/pbkdf2"
 	"crypto/sha1"
 	"encoding/hex"
@@ -136,7 +137,7 @@ func EncryptFilename(keyHex string, filename string) (string, error) {
 }
 
 func DecryptTwofishCBCStream(dst io.Writer, src io.Reader, key []byte) error {
-	if len(key) != 16 && len(key) != 24 && len(key) != 32 {
+	if l := len(key); l != 16 && l != 24 && l != 32 {
 		return errors.New("invalid key size")
 	}
 	block, err := twofish.NewCipher(key)
@@ -145,111 +146,61 @@ func DecryptTwofishCBCStream(dst io.Writer, src io.Reader, key []byte) error {
 	}
 	bs := block.BlockSize()
 
-	hdrCt := make([]byte, 2*bs)
-	if _, err := io.ReadFull(src, hdrCt); err != nil {
+	header := make([]byte, 2*bs)
+	if _, err := io.ReadFull(src, header); err != nil {
 		return err
 	}
+	hdr := make([]byte, 2*bs)
+	cipher.NewCBCDecrypter(block, []byte("1234567887654321")).CryptBlocks(hdr, header)
 
-	fixedIV := []byte("1234567887654321")
-	prev := make([]byte, bs)
-	copy(prev, fixedIV)
-
-	hdrPt := make([]byte, 2*bs)
-	for off := 0; off < 2*bs; off += bs {
-		tmp := make([]byte, bs)
-		block.Decrypt(tmp, hdrCt[off:off+bs])
-		for i := 0; i < bs; i++ {
-			hdrPt[off+i] = tmp[i] ^ prev[i]
-		}
-		copy(prev, hdrCt[off:off+bs])
+	streamIV := hdr[:bs]
+	padCount := int(hdr[bs] & 0xFF)
+	if padCount < 0 || padCount >= bs {
+		padCount = 0
 	}
 
-	streamIV := make([]byte, bs)
-	copy(streamIV, hdrPt[:bs])
-	padCount := int(hdrPt[bs])
-
-	copy(prev, streamIV)
-
-	buf := make([]byte, 1<<20)
-	var rem []byte
-	var outHold []byte
-
-	flush := func(p []byte) error {
-		if padCount == 0 {
-			_, err := dst.Write(p)
-			return err
-		}
-		outHold = append(outHold, p...)
-		if len(outHold) > padCount {
-			w := len(outHold) - padCount
-			if w > 0 {
-				if _, err := dst.Write(outHold[:w]); err != nil {
-					return err
-				}
-				outHold = append([]byte(nil), outHold[w:]...)
-			}
-		}
-		return nil
+	cbc := cipher.NewCBCDecrypter(block, streamIV)
+	ct := make([]byte, bs)
+	var tail []byte
+	if padCount > 0 {
+		tail = make([]byte, 0, padCount)
 	}
 
 	for {
-		n, rerr := src.Read(buf)
-		if n > 0 {
-			chunk := append(rem, buf[:n]...)
-			blocks := (len(chunk) / bs) * bs
-			toProc := blocks
-			if rerr == nil {
-				if blocks >= bs {
-					toProc = blocks - bs
-				} else {
-					toProc = 0
-				}
-			}
-			if toProc > 0 {
-				for off := 0; off < toProc; off += bs {
-					ct := chunk[off : off+bs]
-					pt := make([]byte, bs)
-					block.Decrypt(pt, ct)
-					for i := 0; i < bs; i++ {
-						pt[i] ^= prev[i]
-					}
-					if err := flush(pt); err != nil {
-						return err
-					}
-					copy(prev, ct)
-				}
-			}
-			rem = chunk[toProc:]
-			if rerr == io.EOF && len(rem) > 0 {
-				if len(rem)%bs != 0 {
-					return errors.New("trailing bytes not multiple of block size")
-				}
-				for off := 0; off < len(rem); off += bs {
-					ct := rem[off : off+bs]
-					pt := make([]byte, bs)
-					block.Decrypt(pt, ct)
-					for i := 0; i < bs; i++ {
-						pt[i] ^= prev[i]
-					}
-					if err := flush(pt); err != nil {
-						return err
-					}
-					copy(prev, ct)
-				}
-			}
+		_, err := io.ReadFull(src, ct)
+		if err == io.EOF {
+			break
 		}
-		if rerr == io.EOF {
-			if padCount == 0 && len(outHold) > 0 {
-				if _, err := dst.Write(outHold); err != nil {
-					return err
-				}
-			}
-			return nil
+		if err == io.ErrUnexpectedEOF {
+			return errors.New("ciphertext not multiple of block size")
 		}
-		if rerr != nil {
-			return rerr
+		if err != nil {
+			return err
+		}
+
+		pt := make([]byte, bs)
+		cbc.CryptBlocks(pt, ct)
+
+		if padCount == 0 {
+			if _, err := dst.Write(pt); err != nil {
+				return err
+			}
+			continue
+		}
+
+		buf := append(tail, pt...)
+		if len(buf) > padCount {
+			w := len(buf) - padCount
+			if _, err := dst.Write(buf[:w]); err != nil {
+				return err
+			}
+			tail = append(tail[:0], buf[w:]...)
+		} else {
+			tail = append(tail[:0], buf...)
 		}
 	}
+
+	return nil
 }
 
 func FetchCryptoSaltAndStoredHash(h *HTTPClient) (storedHex, salt string, err error) {
