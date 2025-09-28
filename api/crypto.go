@@ -144,16 +144,53 @@ func DecryptTwofishCBCStream(dst io.Writer, src io.Reader, key []byte) error {
 		return err
 	}
 	bs := block.BlockSize()
-	iv := make([]byte, bs)
-	if _, err := io.ReadFull(src, iv); err != nil {
+
+	hdrCt := make([]byte, 2*bs)
+	if _, err := io.ReadFull(src, hdrCt); err != nil {
 		return err
 	}
+
+	fixedIV := []byte("1234567887654321")
 	prev := make([]byte, bs)
-	copy(prev, iv)
+	copy(prev, fixedIV)
+
+	hdrPt := make([]byte, 2*bs)
+	for off := 0; off < 2*bs; off += bs {
+		tmp := make([]byte, bs)
+		block.Decrypt(tmp, hdrCt[off:off+bs])
+		for i := 0; i < bs; i++ {
+			hdrPt[off+i] = tmp[i] ^ prev[i]
+		}
+		copy(prev, hdrCt[off:off+bs])
+	}
+
+	streamIV := make([]byte, bs)
+	copy(streamIV, hdrPt[:bs])
+	padCount := int(hdrPt[bs])
+
+	copy(prev, streamIV)
 
 	buf := make([]byte, 1<<20)
 	var rem []byte
-	var lastPlain []byte
+	var outHold []byte
+
+	flush := func(p []byte) error {
+		if padCount == 0 {
+			_, err := dst.Write(p)
+			return err
+		}
+		outHold = append(outHold, p...)
+		if len(outHold) > padCount {
+			w := len(outHold) - padCount
+			if w > 0 {
+				if _, err := dst.Write(outHold[:w]); err != nil {
+					return err
+				}
+				outHold = append([]byte(nil), outHold[w:]...)
+			}
+		}
+		return nil
+	}
 
 	for {
 		n, rerr := src.Read(buf)
@@ -171,13 +208,13 @@ func DecryptTwofishCBCStream(dst io.Writer, src io.Reader, key []byte) error {
 			if toProc > 0 {
 				for off := 0; off < toProc; off += bs {
 					ct := chunk[off : off+bs]
-					tmp := make([]byte, bs)
-					block.Decrypt(tmp, ct)
-					for j := 0; j < bs; j++ {
-						tmp[j] ^= prev[j]
+					pt := make([]byte, bs)
+					block.Decrypt(pt, ct)
+					for i := 0; i < bs; i++ {
+						pt[i] ^= prev[i]
 					}
-					if _, werr := dst.Write(tmp); werr != nil {
-						return werr
+					if err := flush(pt); err != nil {
+						return err
 					}
 					copy(prev, ct)
 				}
@@ -191,31 +228,28 @@ func DecryptTwofishCBCStream(dst io.Writer, src io.Reader, key []byte) error {
 					ct := rem[off : off+bs]
 					pt := make([]byte, bs)
 					block.Decrypt(pt, ct)
-					for j := 0; j < bs; j++ {
-						pt[j] ^= prev[j]
+					for i := 0; i < bs; i++ {
+						pt[i] ^= prev[i]
 					}
-					lastPlain = append(lastPlain, pt...)
+					if err := flush(pt); err != nil {
+						return err
+					}
 					copy(prev, ct)
-				}
-				i := len(lastPlain) - 1
-				for i >= 0 && lastPlain[i] == 0x00 {
-					i--
-				}
-				if i >= 0 {
-					if _, werr := dst.Write(lastPlain[:i+1]); werr != nil {
-						return werr
-					}
 				}
 			}
 		}
 		if rerr == io.EOF {
-			break
+			if padCount == 0 && len(outHold) > 0 {
+				if _, err := dst.Write(outHold); err != nil {
+					return err
+				}
+			}
+			return nil
 		}
 		if rerr != nil {
 			return rerr
 		}
 	}
-	return nil
 }
 
 func FetchCryptoSaltAndStoredHash(h *HTTPClient) (storedHex, salt string, err error) {
