@@ -2,7 +2,7 @@
 
 My simple approach to implementing the Icedrive API.
 
-**Status: WiP, this will be transformed into a library later on**
+**Status: WiP, expect breaking changes for now**
 
 Currently supports:
 
@@ -10,8 +10,8 @@ Currently supports:
   - Username/password incl. proof-of-work solution (captcha)
   - Bearer token
 - List Folder
-- Upload File (unencrypted)
-- Download File (unencrypted)
+- Upload File (encrypted/unencrypted)
+- Download File (encrypted/unencrypted)
 - Move File / Folder to trash
 - Empty Trash
 
@@ -21,8 +21,7 @@ Currently supports:
 - List Encrypted Folder
 - Derive Crypto Hash
 - Download Encrypted Files
-
-**The Encrypted section of Icedrive is not yet fully supported as I didn't uploads/downloads yet.**
+- Upload Encrypted Files
 
 ## Getting Started
 
