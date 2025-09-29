@@ -20,6 +20,7 @@ Currently supports:
 - Encrypt and Decrypt Filenames
 - List Encrypted Folder
 - Derive Crypto Hash
+- Download Encrypted Files
 
 **The Encrypted section of Icedrive is not yet fully supported as I didn't uploads/downloads yet.**
 
