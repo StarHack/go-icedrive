@@ -3,6 +3,7 @@ package api
 import (
 	"crypto/cipher"
 	"crypto/pbkdf2"
+	"crypto/rand"
 	"crypto/sha1"
 	"encoding/hex"
 	"encoding/json"
@@ -137,7 +138,12 @@ func EncryptFilename(keyHex string, filename string) (string, error) {
 	return hex.EncodeToString(ct), nil
 }
 
-func DecryptTwofishCBCStream(dst io.Writer, src io.Reader, key []byte) error {
+func DecryptTwofishCBCStream(dst io.Writer, src io.Reader, hexkey string) error {
+	key, err := hex.DecodeString(hexkey)
+	if err != nil {
+		return err
+	}
+
 	if l := len(key); l != 16 && l != 24 && l != 32 {
 		return fmt.Errorf("invalid key length: %d", l)
 	}
@@ -233,6 +239,107 @@ func DecryptTwofishCBCStream(dst io.Writer, src io.Reader, key []byte) error {
 				}
 				if !wroteAny && numPadding != 0 {
 					return fmt.Errorf("unexpected empty body")
+				}
+				return nil
+			}
+			return rerr
+		}
+	}
+}
+
+func EncryptTwofishCBCStream(dst io.Writer, src io.Reader, hexkey string, totalSize int64) error {
+	key, err := hex.DecodeString(hexkey)
+	if err != nil {
+		return err
+	}
+	if l := len(key); l != 16 && l != 24 && l != 32 {
+		return fmt.Errorf("invalid key length: %d", l)
+	}
+	block, err := twofish.NewCipher(key)
+	if err != nil {
+		return err
+	}
+	const blockSize = 16
+	const chunkSize = 4 * 1024 * 1024
+	iv := make([]byte, blockSize)
+	if _, err := rand.Read(iv); err != nil {
+		return err
+	}
+	numPadding := byte(0)
+	if m := totalSize % blockSize; m != 0 {
+		numPadding = byte(blockSize - m)
+	}
+	headerPlain := make([]byte, 2*blockSize)
+	copy(headerPlain[:blockSize], iv)
+	headerPlain[blockSize] = numPadding
+	headerPlain[blockSize+1] = 0
+	headerIV := []byte("1234567887654321")
+	headerCBC := cipher.NewCBCEncrypter(block, headerIV)
+	headerCipher := make([]byte, len(headerPlain))
+	headerCBC.CryptBlocks(headerCipher, headerPlain)
+	if _, err := dst.Write(headerCipher); err != nil {
+		return err
+	}
+	newCBC := func() cipher.BlockMode { return cipher.NewCBCEncrypter(block, iv) }
+	cbc := newCBC()
+	chunkRemaining := chunkSize - 2*blockSize
+	buf := make([]byte, 128*1024)
+	var carry []byte
+	var readTotal int64
+	for {
+		n, rerr := src.Read(buf)
+		if n > 0 {
+			readTotal += int64(n)
+			data := append(carry, buf[:n]...)
+			for len(data) >= blockSize {
+				toProcess := len(data)
+				if toProcess > chunkRemaining {
+					toProcess = chunkRemaining
+				}
+				toProcess = (toProcess / blockSize) * blockSize
+				if toProcess == 0 {
+					break
+				}
+				out := make([]byte, toProcess)
+				cbc.CryptBlocks(out, data[:toProcess])
+				if _, err := dst.Write(out); err != nil {
+					return err
+				}
+				data = data[toProcess:]
+				chunkRemaining -= toProcess
+				if chunkRemaining == 0 && !(rerr == io.EOF && len(data) == 0) {
+					cbc = newCBC()
+					chunkRemaining = chunkSize
+				}
+			}
+			carry = data
+		}
+		if rerr != nil {
+			if rerr == io.EOF {
+				final := carry
+				if numPadding > 0 {
+					final = append(final, make([]byte, int(numPadding))...)
+				}
+				if len(final)%blockSize != 0 {
+					return fmt.Errorf("final block size invalid")
+				}
+				for len(final) > 0 {
+					toProcess := len(final)
+					if toProcess > chunkRemaining {
+						toProcess = chunkRemaining
+					}
+					toProcess = (toProcess / blockSize) * blockSize
+					out := make([]byte, toProcess)
+					cbc.CryptBlocks(out, final[:toProcess])
+					if _, err := dst.Write(out); err != nil {
+						return err
+					}
+					final = final[toProcess:]
+					chunkRemaining -= toProcess
+					if chunkRemaining == 0 && len(final) > 0 {
+						cbc = newCBC()
+						chunkRemaining = chunkSize
+					}
 				}
 				return nil
 			}

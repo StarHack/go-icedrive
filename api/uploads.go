@@ -134,3 +134,70 @@ func UploadFile(h *HTTPClient, folderID int64, filename string) (*UploadResponse
 	}
 	return &out, nil
 }
+
+func UploadEncryptedFile(h *HTTPClient, folderID int64, filename string, hexkey string) (*UploadResponse, error) {
+	if h == nil {
+		h = NewHTTPClientWithEnv()
+	}
+	endpoints, err := GetUploadEndpoints(h)
+	if err != nil || len(endpoints) == 0 {
+		return nil, fmt.Errorf("no upload endpoints: %w", err)
+	}
+	endpoint := endpoints[0]
+	f, err := os.Open(filename)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	fi, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+	moddate := float64(fi.ModTime().UnixNano()) / 1e9
+	ext := strings.ToLower(filepath.Ext(filename))
+	ct := mime.TypeByExtension(ext)
+	if ct == "" {
+		head := make([]byte, 512)
+		n, _ := f.Read(head)
+		_, _ = f.Seek(0, 0)
+		ct = http.DetectContentType(head[:n])
+		if ct == "" {
+			ct = "application/octet-stream"
+		}
+	}
+	pr, pw := io.Pipe()
+	w := multipart.NewWriter(pw)
+	_ = w.SetBoundary("----geckoformboundary" + randHex(16))
+	go func() {
+		encryptedFilename, err := EncryptFilename(hexkey, filename)
+
+		_ = w.WriteField("folderId", strconv.FormatInt(folderID, 10))
+		_ = w.WriteField("moddate", strconv.FormatFloat(moddate, 'f', -1, 64))
+		_ = w.WriteField("custom_filename", encryptedFilename)
+		_ = w.WriteField("crypto", "1")
+		hdr := make(textproto.MIMEHeader)
+		hdr.Set("Content-Disposition", `form-data; name="files[]"; filename="`+filepath.Base(filename)+`"`)
+		hdr.Set("Content-Type", ct)
+		part, err := w.CreatePart(hdr)
+		if err == nil {
+			err = EncryptTwofishCBCStream(part, f, hexkey, fi.Size())
+		}
+		_ = w.Close()
+		_ = pw.CloseWithError(err)
+	}()
+	status, _, body, err := h.httpPOSTReader(endpoint, w.FormDataContentType(), pr)
+	if err != nil {
+		return nil, err
+	}
+	if status >= 400 {
+		return nil, fmt.Errorf("upload failed with status %d", status)
+	}
+	var out UploadResponse
+	if err := json.Unmarshal(body, &out); err != nil {
+		return nil, err
+	}
+	if out.Error {
+		return nil, fmt.Errorf("upload error: %s", out.Message)
+	}
+	return &out, nil
+}

@@ -1,7 +1,6 @@
 package api
 
 import (
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -112,13 +111,7 @@ func DownloadFile(h *HTTPClient, itemUID string, destPath string, crypted bool) 
 			return err
 		}
 	} else {
-		fmt.Println("decrypt download 1")
-		key, err := hex.DecodeString(EnvCryptoKey64())
-		if err != nil {
-			return err
-		}
-		fmt.Println("decrypt download 2")
-		if err := DecryptTwofishCBCStream(out, res.Body, key); err != nil {
+		if err := DecryptTwofishCBCStream(out, res.Body, EnvCryptoKey64()); err != nil {
 			return err
 		}
 	}
