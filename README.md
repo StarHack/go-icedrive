@@ -33,46 +33,33 @@ package main
 import (
 	"fmt"
 	"log"
-	"github.com/StarHack/go-icedrive/api"
+	"github.com/StarHack/go-icedrive/client"
 )
 
 func main() {
-	api.LoadEnvFile(".env")
-
-	if api.EnvEmail() == "" && api.EnvPassword() == "" && api.EnvBearer() == "" {
-		log.Fatal("ICEDRIVE_EMAIL and ICEDRIVE_PASSWORD OR ICEDRIVE_BEARER must be set")
+	c := client.NewClient()
+	err := c.LoginWithUsernameAndPassword(api.EnvEmail(), api.EnvPassword())
+	if err != nil {
+		panic(err)
 	}
 
-	client := api.NewHTTPClientWithEnv()
-
-	// Username / Password Login
-	status, _, body, err := api.LoginWithUsernameAndPassword(client, api.EnvEmail(), api.EnvPassword(), api.EnvHmac())
+	// List root folder
+	r, err := c.ListFolder(uint64(0))
 	if err != nil {
-		if len(body) > 0 {
-			os.Stdout.Write(body)
-			fmt.Println()
+		panic(err)
+	}
+
+	// Find hello-world.txt and download it
+	for _, item := range r {
+		fmt.Printf("%s (%s, %v)\n", item.Filename, item.UID, item.ID)
+		if item.Filename == "hello-world.txt" {
+			err = c.DownloadFile(item, "downloads/")
+			if err != nil {
+				panic(err)
+			}
+			fmt.Println("download successful!")
 		}
-		log.Fatalf("login request error: %v", err)
 	}
-
-	fmt.Println("status:", status)
-	fmt.Println(string(body))
-
-	// Login with already known Bearer token instead
-	// api.LoginWithBearerToken(client, api.EnvBearer())
-
-
-	res, err := api.GetCollection(client, int64(0))
-	if err != nil {
-		panic(err)
-	}
-	fmt.Println(res)
-
-	err = api.DownloadFile(client, "file-3341885801", "downloads/hello-world.txt")
-	if err != nil {
-		panic(err)
-	}
-	fmt.Println("download ok")
 }
 
 ```
