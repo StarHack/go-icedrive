@@ -69,7 +69,6 @@ func DownloadFile(h *HTTPClient, item Item, destPath string, crypted bool) error
 		h = NewHTTPClientWithEnv()
 	}
 	itemUID := item.UID
-	fmt.Println("uga uga: " + itemUID)
 	urls, err := GetDownloadURLs(h, []string{itemUID}, crypted)
 	if err != nil {
 		return err
