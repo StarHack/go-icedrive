@@ -126,3 +126,49 @@ func DownloadFile(h *HTTPClient, item Item, destPath string, crypted bool) error
 	}
 	return os.Rename(tmp, destFilePath)
 }
+
+func OpenDownloadStream(h *HTTPClient, item Item, crypted bool) (io.ReadCloser, error) {
+	if h == nil {
+		h = NewHTTPClientWithEnv()
+	}
+	if strings.TrimSpace(h.bearer) == "" {
+		return nil, fmt.Errorf("missing bearer token; call Login first")
+	}
+	urls, err := GetDownloadURLs(h, []string{item.UID}, crypted)
+	if err != nil {
+		return nil, err
+	}
+	dl := urls[0]
+	req, err := http.NewRequest("GET", dl.URL, nil)
+	if err != nil {
+		return nil, err
+	}
+	h.addEnvHeaders(req)
+	req.Header.Set("Accept", "*/*")
+	req.Header.Set("Accept-Encoding", "identity")
+	resp, err := h.c.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		b, _ := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		return nil, fmt.Errorf("download GET failed: %s\n%s", resp.Status, string(b))
+	}
+	if !crypted {
+		return resp.Body, nil
+	}
+	pr, pw := io.Pipe()
+	go func() {
+		defer resp.Body.Close()
+		if err := DecryptTwofishCBCStream(pw, resp.Body, EnvCryptoKey64()); err != nil {
+			_ = pw.CloseWithError(err)
+			return
+		}
+		_ = pw.Close()
+	}()
+	return struct {
+		io.Reader
+		io.Closer
+	}{Reader: pr, Closer: resp.Body}, nil
+}

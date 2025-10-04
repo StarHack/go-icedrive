@@ -2,6 +2,7 @@ package client
 
 import (
 	"errors"
+	"io"
 
 	"github.com/StarHack/go-icedrive/api"
 )
@@ -126,11 +127,25 @@ func (c *Client) DownloadFile(item api.Item, destPath string) error {
 	return api.DownloadFile(c.httpc, item, destPath, false)
 }
 
+func (c *Client) DownloadFileStream(item api.Item) (io.ReadCloser, error) {
+	if err := c.defaultAuthChecks(false); err != nil {
+		return nil, err
+	}
+	return api.OpenDownloadStream(c.httpc, item, false)
+}
+
 func (c *Client) DownloadFileEncrypted(item api.Item, destPath string) error {
 	if err := c.defaultAuthChecks(true); err != nil {
 		return err
 	}
 	return api.DownloadFile(c.httpc, item, destPath, true)
+}
+
+func (c *Client) DownloadFileEncryptedStream(item api.Item) (io.ReadCloser, error) {
+	if err := c.defaultAuthChecks(true); err != nil {
+		return nil, err
+	}
+	return api.OpenDownloadStream(c.httpc, item, true)
 }
 
 func (c *Client) TrashItem(item api.Item) error {
