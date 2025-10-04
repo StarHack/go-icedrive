@@ -20,15 +20,15 @@ type GeoFileserverList struct {
 }
 
 type UploadFileObj struct {
-	ID          int64       `json:"id"`
+	ID          uint64      `json:"id"`
 	UID         string      `json:"uid"`
 	Type        string      `json:"type"`
 	IsFolder    int         `json:"isFolder"`
 	Filename    string      `json:"filename"`
 	FilenameRaw string      `json:"filename_raw"`
-	Filesize    int64       `json:"filesize"`
-	Filemod     int64       `json:"filemod"`
-	Moddate     int64       `json:"moddate"`
+	Filesize    uint64      `json:"filesize"`
+	Filemod     uint64      `json:"filemod"`
+	Moddate     uint64      `json:"moddate"`
 	FileType    string      `json:"fileType"`
 	Extension   string      `json:"extension"`
 	ServerID    int         `json:"serverId"`
@@ -37,17 +37,17 @@ type UploadFileObj struct {
 	Crypto      int         `json:"crypto"`
 	Padding     int         `json:"padding"`
 	Fave        int         `json:"fave"`
-	FolderID    int64       `json:"folderId"`
+	FolderID    uint64      `json:"folderId"`
 	Overwrite   bool        `json:"overwrite"`
 }
 
 type UploadResponse struct {
 	Error     bool          `json:"error"`
 	Message   string        `json:"message"`
-	ID        int64         `json:"id"`
-	Time      int64         `json:"time"`
+	ID        uint64        `json:"id"`
+	Time      uint64        `json:"time"`
 	Overwrite bool          `json:"overwrite"`
-	FolderID  int64         `json:"folderId"`
+	FolderID  uint64        `json:"folderId"`
 	FileObj   UploadFileObj `json:"fileObj"`
 }
 
@@ -72,7 +72,7 @@ func GetUploadEndpoints(h *HTTPClient) ([]string, error) {
 	return resp.UploadEndpoints, nil
 }
 
-func UploadFile(h *HTTPClient, folderID int64, filename string) (*UploadResponse, error) {
+func UploadFile(h *HTTPClient, folderID uint64, filename string) (*UploadResponse, error) {
 	if h == nil {
 		h = NewHTTPClientWithEnv()
 	}
@@ -106,7 +106,7 @@ func UploadFile(h *HTTPClient, folderID int64, filename string) (*UploadResponse
 	w := multipart.NewWriter(pw)
 	_ = w.SetBoundary("----geckoformboundary" + randHex(16))
 	go func() {
-		_ = w.WriteField("folderId", strconv.FormatInt(folderID, 10))
+		_ = w.WriteField("folderId", strconv.FormatUint(folderID, 10))
 		_ = w.WriteField("moddate", strconv.FormatFloat(moddate, 'f', -1, 64))
 		hdr := make(textproto.MIMEHeader)
 		hdr.Set("Content-Disposition", `form-data; name="files[]"; filename="`+filepath.Base(filename)+`"`)
@@ -135,7 +135,7 @@ func UploadFile(h *HTTPClient, folderID int64, filename string) (*UploadResponse
 	return &out, nil
 }
 
-func UploadEncryptedFile(h *HTTPClient, folderID int64, filename string, hexkey string) (*UploadResponse, error) {
+func UploadEncryptedFile(h *HTTPClient, folderID uint64, filename string, hexkey string) (*UploadResponse, error) {
 	if h == nil {
 		h = NewHTTPClientWithEnv()
 	}
@@ -171,7 +171,7 @@ func UploadEncryptedFile(h *HTTPClient, folderID int64, filename string, hexkey 
 	go func() {
 		encryptedFilename, err := EncryptFilename(hexkey, filename)
 
-		_ = w.WriteField("folderId", strconv.FormatInt(folderID, 10))
+		_ = w.WriteField("folderId", strconv.FormatUint(folderID, 10))
 		_ = w.WriteField("moddate", strconv.FormatFloat(moddate, 'f', -1, 64))
 		_ = w.WriteField("custom_filename", encryptedFilename)
 		_ = w.WriteField("crypto", "1")
@@ -180,7 +180,7 @@ func UploadEncryptedFile(h *HTTPClient, folderID int64, filename string, hexkey 
 		hdr.Set("Content-Type", ct)
 		part, err := w.CreatePart(hdr)
 		if err == nil {
-			err = EncryptTwofishCBCStream(part, f, hexkey, fi.Size())
+			err = EncryptTwofishCBCStream(part, f, hexkey, uint64(fi.Size()))
 		}
 		_ = w.Close()
 		_ = pw.CloseWithError(err)

@@ -3,7 +3,6 @@ package api
 import (
 	"encoding/json"
 	"fmt"
-	"strings"
 )
 
 type User struct {
@@ -22,9 +21,6 @@ type User struct {
 func UserData(h *HTTPClient) (*User, error) {
 	if h == nil {
 		h = NewHTTPClientWithEnv()
-	}
-	if strings.TrimSpace(h.bearer) == "" {
-		return nil, fmt.Errorf("missing bearer token; call Login first")
 	}
 
 	status, _, body, err := h.httpGET("https://apis.icedrive.net/v3/webapp/user-data")

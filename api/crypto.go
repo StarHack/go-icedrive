@@ -247,7 +247,7 @@ func DecryptTwofishCBCStream(dst io.Writer, src io.Reader, hexkey string) error 
 	}
 }
 
-func EncryptTwofishCBCStream(dst io.Writer, src io.Reader, hexkey string, totalSize int64) error {
+func EncryptTwofishCBCStream(dst io.Writer, src io.Reader, hexkey string, totalSize uint64) error {
 	key, err := hex.DecodeString(hexkey)
 	if err != nil {
 		return err
@@ -285,11 +285,11 @@ func EncryptTwofishCBCStream(dst io.Writer, src io.Reader, hexkey string, totalS
 	chunkRemaining := chunkSize - 2*blockSize
 	buf := make([]byte, 128*1024)
 	var carry []byte
-	var readTotal int64
+	var readTotal uint64
 	for {
 		n, rerr := src.Read(buf)
 		if n > 0 {
-			readTotal += int64(n)
+			readTotal += uint64(n)
 			data := append(carry, buf[:n]...)
 			for len(data) >= blockSize {
 				toProcess := len(data)

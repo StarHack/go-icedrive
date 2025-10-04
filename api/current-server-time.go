@@ -11,7 +11,7 @@ import (
 type ServerTimeResponse struct {
 	Error    bool   `json:"error"`
 	Message  string `json:"message"`
-	TimeUnix int64  `json:"time_unix"`
+	TimeUnix uint64 `json:"time_unix"`
 }
 
 // GetServerTime fetches the current server time from Icedrive API.
@@ -44,4 +44,3 @@ func GetServerTime(client *http.Client) (*ServerTimeResponse, error) {
 	}
 	return &resp, nil
 }
-

@@ -12,11 +12,11 @@ import (
 )
 
 type DownloadURLEntry struct {
-	ID       int64  `json:"id"`
+	ID       uint64 `json:"id"`
 	Filename string `json:"filename"`
-	Filesize int64  `json:"filesize"`
-	FolderID int64  `json:"folderId"`
-	Moddate  int64  `json:"moddate"`
+	Filesize uint64 `json:"filesize"`
+	FolderID uint64 `json:"folderId"`
+	Moddate  uint64 `json:"moddate"`
 	Path     string `json:"path"`
 	URL      string `json:"url"`
 }
@@ -64,10 +64,12 @@ func GetDownloadURLs(h *HTTPClient, itemUIDs []string, crypto bool) ([]DownloadU
 	return resp.Urls, nil
 }
 
-func DownloadFile(h *HTTPClient, itemUID string, destPath string, crypted bool) error {
+func DownloadFile(h *HTTPClient, item Item, destPath string, crypted bool) error {
 	if h == nil {
 		h = NewHTTPClientWithEnv()
 	}
+	itemUID := item.UID
+	fmt.Println("uga uga: " + itemUID)
 	urls, err := GetDownloadURLs(h, []string{itemUID}, crypted)
 	if err != nil {
 		return err
@@ -75,7 +77,9 @@ func DownloadFile(h *HTTPClient, itemUID string, destPath string, crypted bool) 
 	dl := urls[0]
 	dlURL := dl.URL
 
-	tmp := destPath + ".part"
+	destFilePath := filepath.Join(destPath, item.Filename)
+	tmp := destFilePath + ".part"
+	fmt.Println(tmp)
 	if err := os.MkdirAll(filepath.Dir(destPath), 0o755); err != nil {
 		return err
 	}
@@ -121,5 +125,5 @@ func DownloadFile(h *HTTPClient, itemUID string, destPath string, crypted bool) 
 	if err := out.Close(); err != nil {
 		return err
 	}
-	return os.Rename(tmp, destPath)
+	return os.Rename(tmp, destFilePath)
 }

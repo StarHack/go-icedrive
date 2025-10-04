@@ -13,16 +13,17 @@ type CollectionType string
 const (
 	CollectionCloud  CollectionType = "cloud"
 	CollectionCrypto CollectionType = "crypto"
+	CollectionTrash  CollectionType = "trash"
 )
 
-type CollectionItem struct {
-	ID        int64       `json:"id"`
+type Item struct {
+	ID        uint64      `json:"id"`
 	UID       string      `json:"uid"`
 	Filename  string      `json:"filename"`
-	ParentID  int64       `json:"parentId"`
-	Moddate   int64       `json:"moddate"`
+	ParentID  uint64      `json:"parentId"`
+	Moddate   uint64      `json:"moddate"`
 	IsFolder  int         `json:"isFolder"`
-	Filesize  int64       `json:"filesize"`
+	Filesize  uint64      `json:"filesize"`
 	Extension string      `json:"extension"`
 	Fave      int         `json:"fave"`
 	IsPublic  int         `json:"isPublic"`
@@ -35,14 +36,14 @@ type CollectionItem struct {
 }
 
 type CollectionResponse struct {
-	Error   bool             `json:"error"`
-	ID      int64            `json:"id"`
-	Access  string           `json:"access"`
-	Results int              `json:"results"`
-	Data    []CollectionItem `json:"data"`
+	Error   bool   `json:"error"`
+	ID      uint64 `json:"id"`
+	Access  string `json:"access"`
+	Results int    `json:"results"`
+	Data    []Item `json:"data"`
 }
 
-func GetCollection(h *HTTPClient, folderID int64, cType CollectionType) (*CollectionResponse, error) {
+func GetCollection(h *HTTPClient, folderID uint64, cType CollectionType) (*CollectionResponse, error) {
 	if h == nil {
 		h = NewHTTPClientWithEnv()
 	}
@@ -57,7 +58,7 @@ func GetCollection(h *HTTPClient, folderID int64, cType CollectionType) (*Collec
 	u, _ := url.Parse("https://apis.icedrive.net/v3/webapp/collection")
 	q := u.Query()
 	q.Set("type", string(cType))
-	q.Set("folderId", strconv.FormatInt(folderID, 10))
+	q.Set("folderId", strconv.FormatUint(folderID, 10))
 	u.RawQuery = q.Encode()
 
 	status, _, body, err := h.httpGET(u.String())

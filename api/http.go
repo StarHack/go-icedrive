@@ -17,10 +17,10 @@ import (
 )
 
 type HTTPClient struct {
-	c       *http.Client
-	jar     http.CookieJar
-	bearer  string
-	printHW bool
+	c      *http.Client
+	jar    http.CookieJar
+	bearer string
+	debug  bool
 }
 
 func NewHTTPClientWithEnv() *HTTPClient {
@@ -154,11 +154,13 @@ func (h *HTTPClient) addEnvHeaders(req *http.Request) {
 }
 
 func (h *HTTPClient) printHeaders(req *http.Request) {
-	fmt.Println(">>> HTTP Request:", req.Method, req.URL.String())
-	for k, v := range req.Header {
-		fmt.Printf("%s: %s\n", k, strings.Join(v, "; "))
+	if h.debug {
+		fmt.Println(">>> HTTP Request:", req.Method, req.URL.String())
+		for k, v := range req.Header {
+			fmt.Printf("%s: %s\n", k, strings.Join(v, "; "))
+		}
+		fmt.Println(">>> End Headers")
 	}
-	fmt.Println(">>> End Headers")
 }
 
 func decodeBody(res *http.Response) ([]byte, error) {
@@ -290,4 +292,8 @@ func (h *HTTPClient) Preflight() (int, http.Header, []byte, error) {
 		return s1, nil, nil, err
 	}
 	return h.httpGET("https://icedrive.net/login")
+}
+
+func (h *HTTPClient) SetDebug(debug bool) {
+	h.debug = debug
 }

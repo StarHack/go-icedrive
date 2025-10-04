@@ -5,8 +5,8 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"mime/multipart"
-	"net/http"
 )
 
 type LoginAuthData struct {
@@ -35,23 +35,23 @@ func randHex(n int) string {
 	return hex.EncodeToString(b)
 }
 
-func LoginWithUsernameAndPassword(h *HTTPClient, email, password, hmacKeyHex string) (int, http.Header, []byte, error) {
+func LoginWithUsernameAndPassword(h *HTTPClient, email, password, hmacKeyHex string) (*User, error) {
 	if h == nil {
 		h = NewHTTPClientWithEnv()
 	}
 	sts, _, stBody, err := h.httpGET("https://apis.icedrive.net/v3/website/current-server-time")
 	if err != nil || sts < 200 || sts >= 400 {
-		return sts, nil, stBody, err
+		return nil, err
 	}
 	var st struct {
 		TimeUnix int64 `json:"time_unix"`
 	}
 	if err := json.Unmarshal(stBody, &st); err != nil {
-		return sts, nil, stBody, err
+		return nil, err
 	}
 	formSecure, err := ComputeProofOfWork(st.TimeUnix, hmacKeyHex)
 	if err != nil {
-		return 0, nil, nil, err
+		return nil, err
 	}
 	var buf bytes.Buffer
 	w := multipart.NewWriter(&buf)
@@ -62,21 +62,32 @@ func LoginWithUsernameAndPassword(h *HTTPClient, email, password, hmacKeyHex str
 	_ = w.WriteField("form_secure", formSecure)
 	_ = w.Close()
 	ct := w.FormDataContentType()
-	code, hdr, body, err := h.httpPOST("https://apis.icedrive.net/v3/website/login", ct, buf.Bytes())
+	code, _, body, err := h.httpPOST("https://apis.icedrive.net/v3/website/login", ct, buf.Bytes())
 	if code >= 200 && code < 400 && err == nil {
 		var lr LoginResponse
-		if json.Unmarshal(body, &lr) == nil && lr.Token != "" {
+		if err = json.Unmarshal(body, &lr); err == nil && lr.Token != "" {
+			userData, err := UserData(h)
+			if err != nil {
+				return nil, err
+			}
+			fmt.Println("setting bearer token: " + lr.Token)
 			h.SetBearerToken(lr.Token)
+			return userData, nil
+		} else {
+			return nil, err
 		}
 	}
-	return code, hdr, body, err
+	return nil, err
 }
 
 func LoginWithBearerToken(h *HTTPClient, token string) (*User, error) {
 	if h == nil {
 		h = NewHTTPClientWithEnv()
 	}
+	userData, err := UserData(h)
+	if err != nil {
+		return nil, err
+	}
 	h.SetBearerToken(token)
-	return UserData(h)
+	return userData, nil
 }
-
