@@ -38,10 +38,13 @@ import (
 
 func main() {
 	c := client.NewClient()
-	err := c.LoginWithUsernameAndPassword(api.EnvEmail(), api.EnvPassword())
+	err := c.LoginWithUsernameAndPassword("your@email.com", "yourpassword")
 	if err != nil {
 		panic(err)
 	}
+
+	// (optional) set crypto password if you want to work with encrypted content
+	c.SetCryptoPassword("your-crypto-password")
 
 	// List root folder
 	r, err := c.ListFolder(uint64(0))
