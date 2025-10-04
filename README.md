@@ -1,6 +1,6 @@
 # go-icedrive
 
-My simple approach to implementing the Icedrive API.
+Provides a pure Go client compatible with the Icedrive API.
 
 **Status: WiP, expect breaking changes for now**
 
@@ -10,10 +10,11 @@ Currently supports:
   - Username/password incl. proof-of-work solution (captcha)
   - Bearer token
 - List Folder
-- Upload File (encrypted/unencrypted)
-- Download File (encrypted/unencrypted)
+- Upload Files
+- Download Files
 - Move File / Folder to trash
 - Empty Trash
+- List File Versions
 
 **Encryption**
 
