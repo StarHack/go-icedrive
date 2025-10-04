@@ -144,3 +144,15 @@ func (c *Client) RestoreTrashedItem(item api.Item) error {
 func (c *Client) Delete(item api.Item) error {
 	return api.Delete(c.httpc, item)
 }
+
+func (c *Client) Rename(item api.Item, newName string) error {
+	if item.IsFolder == 1 {
+		return api.RenameFolder(c.httpc, item, newName)
+	} else {
+		return api.RenameFile(c.httpc, item, newName, false)
+	}
+}
+
+func (c *Client) Move(targetFolderID uint64, items ...api.Item) error {
+	return api.Move(c.httpc, targetFolderID, items...)
+}

@@ -109,35 +109,3 @@ func TrashRestore(h *HTTPClient, item Item) error {
 	}
 	return nil
 }
-
-func Delete(h *HTTPClient, item Item) error {
-	if h == nil {
-		h = NewHTTPClientWithEnv()
-	}
-	uid := item.UID
-	var buf bytes.Buffer
-	w := multipart.NewWriter(&buf)
-	_ = w.WriteField("request", "erase")
-	_ = w.WriteField("items", uid)
-	if err := w.Close(); err != nil {
-		return err
-	}
-	status, _, body, err := h.httpPOST("https://apis.icedrive.net/v3/webapp/erase", w.FormDataContentType(), buf.Bytes())
-	if err != nil {
-		return err
-	}
-	if status >= 400 {
-		return fmt.Errorf("erase failed with status %d", status)
-	}
-	var resp struct {
-		Error   bool   `json:"error"`
-		Message string `json:"message"`
-	}
-	if err := json.Unmarshal(body, &resp); err != nil {
-		return err
-	}
-	if resp.Error {
-		return fmt.Errorf("erase error: %s", resp.Message)
-	}
-	return nil
-}
