@@ -99,6 +99,10 @@ func (c *Client) ListFolderTrash(folderID uint64) ([]api.Item, error) {
 	return response.Data, nil
 }
 
+func (c *Client) ListVersions(item api.Item) ([]api.FileVersion, error) {
+	return api.ListVersions(c.httpc, item)
+}
+
 func (c *Client) UploadFile(folderID uint64, fileName string) error {
 	if err := c.defaultAuthChecks(false); err != nil {
 		return err
