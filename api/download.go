@@ -33,7 +33,7 @@ func GetDownloadURLs(h *HTTPClient, itemUIDs []string, crypto bool) ([]DownloadU
 	if strings.TrimSpace(h.bearer) == "" {
 		return nil, fmt.Errorf("missing bearer token; call Login first")
 	}
-	u, _ := url.Parse("https://apis.icedrive.net/v3/webapp/download-multi")
+	u, _ := url.Parse("/download-multi")
 	q := u.Query()
 	q.Set("items", strings.Join(itemUIDs, ","))
 	if crypto {
