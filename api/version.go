@@ -27,11 +27,13 @@ func ListVersions(h *HTTPClient, item Item) ([]FileVersion, error) {
 	if item.UID == "" {
 		return nil, fmt.Errorf("missing item UID")
 	}
-	u, _ := url.Parse("https://apis.icedrive.net/v3/webapp/version-list")
-	q := u.Query()
+
+	u := &url.URL{Path: "/v3/webapp/version-list"}
+	q := url.Values{}
 	q.Set("id", item.UID)
 	u.RawQuery = q.Encode()
 	status, _, body, err := h.httpGET(u.String())
+
 	if err != nil {
 		return nil, err
 	}

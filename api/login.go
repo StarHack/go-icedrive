@@ -39,12 +39,12 @@ func LoginWithUsernameAndPassword(h *HTTPClient, email, password, hmacKeyHex str
 	if h == nil {
 		h = NewHTTPClientWithEnv()
 	}
-	sts, _, stBody, err := h.httpGET("https://apis.icedrive.net/v3/website/current-server-time")
+	sts, _, stBody, err := h.httpGET("/current-server-time")
 	if err != nil || sts < 200 || sts >= 400 {
 		return nil, err
 	}
 	var st struct {
-		TimeUnix int64 `json:"time_unix"`
+		TimeUnix uint64 `json:"time_unix"`
 	}
 	if err := json.Unmarshal(stBody, &st); err != nil {
 		return nil, err
@@ -62,15 +62,18 @@ func LoginWithUsernameAndPassword(h *HTTPClient, email, password, hmacKeyHex str
 	_ = w.WriteField("form_secure", formSecure)
 	_ = w.Close()
 	ct := w.FormDataContentType()
-	code, _, body, err := h.httpPOST("https://apis.icedrive.net/v3/website/login", ct, buf.Bytes())
+
+	code, _, body, err := h.httpPOST("/login", ct, buf.Bytes())
 	if code >= 200 && code < 400 && err == nil {
+		if h.debug {
+			fmt.Println(string(body))
+		}
 		var lr LoginResponse
 		if err = json.Unmarshal(body, &lr); err == nil && lr.Token != "" {
 			userData, err := UserData(h)
 			if err != nil {
 				return nil, err
 			}
-			fmt.Println("setting bearer token: " + lr.Token)
 			h.SetBearerToken(lr.Token)
 			return userData, nil
 		} else {

@@ -14,10 +14,10 @@ import (
 // Payload is the inner proof-of-work payload.
 type Payload struct {
 	Challenge  string `json:"challenge"`
-	Nonce      int64  `json:"nonce"`
+	Nonce      uint64 `json:"nonce"`
 	Hash       string `json:"hash"`
 	Difficulty int    `json:"difficulty"`
-	Expires    int64  `json:"expires"`
+	Expires    uint64 `json:"expires"`
 }
 
 // Final is the wrapper with signature.
@@ -73,7 +73,7 @@ func hmacSHA256Hex(message, keyHex string) (string, error) {
 }
 
 // ComputeProofOfWork computes the form_secure string given server timestamp and key.
-func ComputeProofOfWork(serverTimeSec int64, hmacKeyHex string) (string, error) {
+func ComputeProofOfWork(serverTimeSec uint64, hmacKeyHex string) (string, error) {
 	serverTimeMs := serverTimeSec * 1000
 	expires := serverTimeMs + 60000
 	challenge := "proof-of-work"
@@ -81,10 +81,10 @@ func ComputeProofOfWork(serverTimeSec int64, hmacKeyHex string) (string, error) 
 
 	// brute-force nonce until hash has required prefix
 	prefix := strings.Repeat("0", difficulty)
-	var nonce int64
+	var nonce uint64
 	var hash string
 	for {
-		hash = sha256Hex(challenge + strconv.FormatInt(nonce, 10))
+		hash = sha256Hex(challenge + strconv.FormatUint(nonce, 10))
 		if strings.HasPrefix(hash, prefix) {
 			break
 		}
@@ -118,4 +118,3 @@ func ComputeProofOfWork(serverTimeSec int64, hmacKeyHex string) (string, error) 
 	}
 	return base64.StdEncoding.EncodeToString(j), nil
 }
-

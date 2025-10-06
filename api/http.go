@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
-	"os"
 	"strings"
 	"time"
 
@@ -17,10 +16,12 @@ import (
 )
 
 type HTTPClient struct {
-	c      *http.Client
-	jar    http.CookieJar
-	bearer string
-	debug  bool
+	c       *http.Client
+	jar     http.CookieJar
+	bearer  string
+	debug   bool
+	headers string
+	apiBase string
 }
 
 func NewHTTPClientWithEnv() *HTTPClient {
@@ -32,15 +33,11 @@ func NewHTTPClientWithEnv() *HTTPClient {
 		},
 		jar: jar,
 	}
-	if b := os.Getenv("ICEDRIVE_BEARER"); b != "" {
-		h.bearer = b
-	}
 	return h
 }
 
 func (h *HTTPClient) SetBearerToken(t string) {
 	h.bearer = t
-	os.Setenv("ICEDRIVE_BEARER", t)
 }
 
 func (h *HTTPClient) GetBearerToken() string {
@@ -123,8 +120,16 @@ func parseEnvHeaders(hstr string) [][2]string {
 	return out
 }
 
+func (h *HTTPClient) SetApiBase(apiBase string) {
+	h.apiBase = apiBase
+}
+
+func (h *HTTPClient) SetHeaders(headers string) {
+	h.headers = headers
+}
+
 func (h *HTTPClient) addEnvHeaders(req *http.Request) {
-	for _, kv := range parseEnvHeaders(EnvAPIHeaders()) {
+	for _, kv := range parseEnvHeaders(h.headers) {
 		if strings.EqualFold(kv[0], "authorization") && h.bearer != "" {
 			continue
 		}
@@ -192,7 +197,8 @@ func (h *HTTPClient) httpGET(u string) (int, http.Header, []byte, error) {
 	if h == nil || h.c == nil {
 		h = NewHTTPClientWithEnv()
 	}
-	req, _ := http.NewRequest("GET", u, nil)
+
+	req, _ := http.NewRequest("GET", h.apiBase+u, nil)
 	h.addEnvHeaders(req)
 	h.printHeaders(req)
 	res, err := h.c.Do(req)
@@ -211,7 +217,7 @@ func (h *HTTPClient) httpPOST(u string, contentType string, body []byte) (int, h
 	if h == nil || h.c == nil {
 		h = NewHTTPClientWithEnv()
 	}
-	req, _ := http.NewRequest("POST", u, bytes.NewReader(body))
+	req, _ := http.NewRequest("POST", h.apiBase+u, bytes.NewReader(body))
 	h.addEnvHeaders(req)
 	if contentType != "" {
 		req.Header.Set("Content-Type", contentType)
@@ -233,7 +239,7 @@ func (h *HTTPClient) httpPOSTReader(u string, contentType string, body io.Reader
 	if h == nil || h.c == nil {
 		h = NewHTTPClientWithEnv()
 	}
-	req, _ := http.NewRequest("POST", u, body)
+	req, _ := http.NewRequest("POST", h.apiBase+u, body)
 	h.addEnvHeaders(req)
 	if contentType != "" {
 		req.Header.Set("Content-Type", contentType)
@@ -280,18 +286,6 @@ func (h *HTTPClient) InjectEnvCookies() {
 		u, _ := url.Parse(host)
 		h.jar.SetCookies(u, parseCookieStr(ck))
 	}
-}
-
-func (h *HTTPClient) Preflight() (int, http.Header, []byte, error) {
-	if h == nil || h.c == nil {
-		h = NewHTTPClientWithEnv()
-	}
-	h.InjectEnvCookies()
-	s1, _, _, err := h.httpGET("https://icedrive.net/")
-	if err != nil || s1 < 200 || s1 >= 400 {
-		return s1, nil, nil, err
-	}
-	return h.httpGET("https://icedrive.net/login")
 }
 
 func (h *HTTPClient) SetDebug(debug bool) {

@@ -55,7 +55,7 @@ func GetUploadEndpoints(h *HTTPClient) ([]string, error) {
 	if h == nil {
 		h = NewHTTPClientWithEnv()
 	}
-	status, _, body, err := h.httpGET("https://apis.icedrive.net/v3/webapp/geo-fileserver-list")
+	status, _, body, err := h.httpGET("/geo-fileserver-list")
 	if err != nil {
 		return nil, err
 	}

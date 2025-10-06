@@ -352,7 +352,7 @@ func FetchCryptoSaltAndStoredHash(h *HTTPClient) (storedHex, salt string, err er
 	if h == nil {
 		h = NewHTTPClientWithEnv()
 	}
-	status, _, body, e := h.httpGET("https://apis.icedrive.net/v3/webapp/crypto-auth")
+	status, _, body, e := h.httpGET("/crypto-auth")
 	if e != nil {
 		return "", "", e
 	}

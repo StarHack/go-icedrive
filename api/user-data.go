@@ -6,11 +6,11 @@ import (
 )
 
 type User struct {
-	ID          int64  `json:"id"`
+	ID          uint64 `json:"id"`
 	Email       string `json:"email"`
 	FullName    string `json:"fullName"`
 	Plan        string `json:"plan"`
-	LevelID     int64  `json:"level_id"`
+	LevelID     uint64 `json:"level_id"`
 	LevelType   string `json:"level_type"`
 	AvatarURL   string `json:"avatar_url"`
 	APIKey      string `json:"apiKey"`
@@ -23,7 +23,7 @@ func UserData(h *HTTPClient) (*User, error) {
 		h = NewHTTPClientWithEnv()
 	}
 
-	status, _, body, err := h.httpGET("https://apis.icedrive.net/v3/webapp/user-data")
+	status, _, body, err := h.httpGET("/user-data")
 	if err != nil {
 		return nil, err
 	}

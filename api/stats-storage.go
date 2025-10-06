@@ -8,11 +8,11 @@ import (
 
 type StorageStats struct {
 	Error     bool    `json:"error"`
-	Used      int64   `json:"used"`
+	Used      uint64  `json:"used"`
 	UsedHuman string  `json:"used_human"`
-	Max       int64   `json:"max"`
+	Max       uint64  `json:"max"`
 	MaxHuman  string  `json:"max_human"`
-	Free      int64   `json:"free"`
+	Free      uint64  `json:"free"`
 	FreeHuman string  `json:"free_human"`
 	Pcent     int     `json:"pcent"`
 	PcentRaw  float64 `json:"pcent_raw"`
@@ -25,7 +25,7 @@ func GetStorageStats(h *HTTPClient) (*StorageStats, error) {
 	if strings.TrimSpace(h.bearer) == "" {
 		return nil, fmt.Errorf("missing bearer token; call Login first")
 	}
-	status, _, body, err := h.httpGET("https://apis.icedrive.net/v3/webapp/stats-storage")
+	status, _, body, err := h.httpGET("/stats-storage")
 	if err != nil {
 		return nil, err
 	}

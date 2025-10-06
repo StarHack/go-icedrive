@@ -26,7 +26,7 @@ func RenameFile(h *HTTPClient, item Item, newName string, keepExt bool) error {
 	if err := w.Close(); err != nil {
 		return err
 	}
-	status, _, body, err := h.httpPOST("https://apis.icedrive.net/v3/webapp/file-rename", w.FormDataContentType(), buf.Bytes())
+	status, _, body, err := h.httpPOST("/file-rename", w.FormDataContentType(), buf.Bytes())
 	if err != nil {
 		return err
 	}
@@ -58,7 +58,7 @@ func RenameFolder(h *HTTPClient, item Item, newName string) error {
 	if err := w.Close(); err != nil {
 		return err
 	}
-	status, _, body, err := h.httpPOST("https://apis.icedrive.net/v3/webapp/folder-rename", w.FormDataContentType(), buf.Bytes())
+	status, _, body, err := h.httpPOST("/folder-rename", w.FormDataContentType(), buf.Bytes())
 	if err != nil {
 		return err
 	}
@@ -91,7 +91,7 @@ func CreateFolder(h *HTTPClient, parentId uint64, name string) error {
 	if err := w.Close(); err != nil {
 		return err
 	}
-	status, _, body, err := h.httpPOST("https://apis.icedrive.net/v3/webapp/folder-create", w.FormDataContentType(), buf.Bytes())
+	status, _, body, err := h.httpPOST("/folder-create", w.FormDataContentType(), buf.Bytes())
 	if err != nil {
 		return err
 	}
@@ -132,7 +132,7 @@ func Move(h *HTTPClient, folderId uint64, items ...Item) error {
 	if err := w.Close(); err != nil {
 		return err
 	}
-	status, _, body, err := h.httpPOST("https://apis.icedrive.net/v3/webapp/move", w.FormDataContentType(), buf.Bytes())
+	status, _, body, err := h.httpPOST("/move", w.FormDataContentType(), buf.Bytes())
 	if err != nil {
 		return err
 	}
@@ -164,7 +164,7 @@ func Delete(h *HTTPClient, item Item) error {
 	if err := w.Close(); err != nil {
 		return err
 	}
-	status, _, body, err := h.httpPOST("https://apis.icedrive.net/v3/webapp/erase", w.FormDataContentType(), buf.Bytes())
+	status, _, body, err := h.httpPOST("/erase", w.FormDataContentType(), buf.Bytes())
 	if err != nil {
 		return err
 	}

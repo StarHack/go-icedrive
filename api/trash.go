@@ -37,7 +37,7 @@ func TrashAdd(h *HTTPClient, items ...Item) error {
 	if err := w.Close(); err != nil {
 		return err
 	}
-	status, _, body, err := h.httpPOST("https://apis.icedrive.net/v3/webapp/trash-add", w.FormDataContentType(), buf.Bytes())
+	status, _, body, err := h.httpPOST("/trash-add", w.FormDataContentType(), buf.Bytes())
 	if err != nil {
 		return err
 	}
@@ -61,7 +61,7 @@ func TrashEraseAll(h *HTTPClient) error {
 	if strings.TrimSpace(h.bearer) == "" {
 		return fmt.Errorf("missing bearer token; call Login first")
 	}
-	status, _, body, err := h.httpGET("https://apis.icedrive.net/v3/webapp/trash-erase-all")
+	status, _, body, err := h.httpGET("/trash-erase-all")
 	if err != nil {
 		return err
 	}
@@ -90,7 +90,7 @@ func TrashRestore(h *HTTPClient, item Item) error {
 	if err := w.Close(); err != nil {
 		return err
 	}
-	status, _, body, err := h.httpPOST("https://apis.icedrive.net/v3/webapp/trash-restore", w.FormDataContentType(), buf.Bytes())
+	status, _, body, err := h.httpPOST("/trash-restore", w.FormDataContentType(), buf.Bytes())
 	if err != nil {
 		return err
 	}

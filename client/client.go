@@ -21,6 +21,8 @@ func NewClient() *Client {
 	var client = Client{httpc: api.NewHTTPClientWithEnv()}
 	client.hmacKeyHex = "436f6e67726174756c6174696f6e7320494620796f7520676f742054484953206661722121203b2921203a29"
 	client.SetDebug(false)
+	client.httpc.SetApiBase("https://apis.icedrive.net/v3/mobile")
+	client.httpc.SetHeaders("User-Agent: icedrive-ios/2.8.9")
 	return &client
 }
 

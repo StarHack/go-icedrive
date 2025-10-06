@@ -55,8 +55,10 @@ func GetCollection(h *HTTPClient, folderID uint64, cType CollectionType) (*Colle
 		return nil, fmt.Errorf("invalid collection type: %s", cType)
 	}
 
-	u, _ := url.Parse("https://apis.icedrive.net/v3/webapp/collection")
-	q := u.Query()
+	u := &url.URL{
+		Path: "/collection",
+	}
+	q := url.Values{}
 	q.Set("type", string(cType))
 	q.Set("folderId", strconv.FormatUint(folderID, 10))
 	u.RawQuery = q.Encode()
@@ -74,6 +76,9 @@ func GetCollection(h *HTTPClient, folderID uint64, cType CollectionType) (*Colle
 		return nil, err
 	}
 	if resp.Error {
+		if h.debug {
+			fmt.Println(string(body))
+		}
 		return nil, fmt.Errorf("collection error")
 	}
 
