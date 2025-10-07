@@ -239,7 +239,7 @@ func (h *HTTPClient) httpPOSTReader(u string, contentType string, body io.Reader
 	if h == nil || h.c == nil {
 		h = NewHTTPClientWithEnv()
 	}
-	req, _ := http.NewRequest("POST", h.apiBase+u, body)
+	req, _ := http.NewRequest("POST", u, body)
 	h.addEnvHeaders(req)
 	if contentType != "" {
 		req.Header.Set("Content-Type", contentType)
