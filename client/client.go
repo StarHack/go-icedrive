@@ -122,6 +122,20 @@ func (c *Client) UploadFileEncrypted(folderID uint64, fileName string) error {
 	return err
 }
 
+func (c *Client) UploadFileWriter(folderID uint64, fileName string) (io.WriteCloser, error) {
+	if err := c.defaultAuthChecks(false); err != nil {
+		return nil, err
+	}
+	return api.NewUploadFileWriter(c.httpc, folderID, fileName)
+}
+
+func (c *Client) UploadFileEncryptedWriter(folderID uint64, fileName string) (io.WriteCloser, error) {
+	if err := c.defaultAuthChecks(true); err != nil {
+		return nil, err
+	}
+	return api.NewUploadFileEncryptedWriter(c.httpc, folderID, fileName, c.cryptoHexKey)
+}
+
 func (c *Client) DownloadFile(item api.Item, destPath string) error {
 	if err := c.defaultAuthChecks(false); err != nil {
 		return err

@@ -201,3 +201,100 @@ func UploadEncryptedFile(h *HTTPClient, folderID uint64, filename string, hexkey
 	}
 	return &out, nil
 }
+
+func NewUploadFileWriter(h *HTTPClient, folderID uint64, filename string) (io.WriteCloser, error) {
+	if h == nil {
+		h = NewHTTPClientWithEnv()
+	}
+	endpoints, err := GetUploadEndpoints(h)
+	if err != nil || len(endpoints) == 0 {
+		return nil, fmt.Errorf("no upload endpoints: %w", err)
+	}
+	endpoint := endpoints[0]
+
+	fi, err := os.Stat(filename)
+	if err != nil {
+		return nil, err
+	}
+	moddate := float64(fi.ModTime().UnixNano()) / 1e9
+	ct := mime.TypeByExtension(strings.ToLower(filepath.Ext(filename)))
+	if ct == "" {
+		ct = "application/octet-stream"
+	}
+
+	pr, pw := io.Pipe()
+	mp := multipart.NewWriter(pw)
+	_ = mp.SetBoundary("----geckoformboundary" + randHex(16))
+
+	partR, partW := io.Pipe()
+
+	go func() {
+		_ = mp.WriteField("folderId", strconv.FormatUint(folderID, 10))
+		_ = mp.WriteField("moddate", strconv.FormatFloat(moddate, 'f', -1, 64))
+		hdr := make(textproto.MIMEHeader)
+		hdr.Set("Content-Disposition", `form-data; name="files[]"; filename="`+filepath.Base(filename)+`"`)
+		hdr.Set("Content-Type", ct)
+		part, err := mp.CreatePart(hdr)
+		if err == nil {
+			_, err = io.Copy(part, partR)
+		}
+		_ = mp.Close()
+		_ = pw.CloseWithError(err)
+	}()
+
+	go func() {
+		_, _, _, _ = h.httpPOSTReader(endpoint, mp.FormDataContentType(), pr)
+	}()
+
+	return partW, nil
+}
+
+func NewUploadFileEncryptedWriter(h *HTTPClient, folderID uint64, filename string, hexkey string) (io.WriteCloser, error) {
+	if h == nil {
+		h = NewHTTPClientWithEnv()
+	}
+	endpoints, err := GetUploadEndpoints(h)
+	if err != nil || len(endpoints) == 0 {
+		return nil, fmt.Errorf("no upload endpoints: %w", err)
+	}
+	endpoint := endpoints[0]
+
+	fi, err := os.Stat(filename)
+	if err != nil {
+		return nil, err
+	}
+	moddate := float64(fi.ModTime().UnixNano()) / 1e9
+	ct := mime.TypeByExtension(strings.ToLower(filepath.Ext(filename)))
+	if ct == "" {
+		ct = "application/octet-stream"
+	}
+
+	pr, pw := io.Pipe()
+	mp := multipart.NewWriter(pw)
+	_ = mp.SetBoundary("----geckoformboundary" + randHex(16))
+
+	partR, partW := io.Pipe()
+
+	go func() {
+		encryptedFilename, _ := EncryptFilename(hexkey, filename)
+		_ = mp.WriteField("folderId", strconv.FormatUint(folderID, 10))
+		_ = mp.WriteField("moddate", strconv.FormatFloat(moddate, 'f', -1, 64))
+		_ = mp.WriteField("custom_filename", encryptedFilename)
+		_ = mp.WriteField("crypto", "1")
+		hdr := make(textproto.MIMEHeader)
+		hdr.Set("Content-Disposition", `form-data; name="files[]"; filename="`+filepath.Base(filename)+`"`)
+		hdr.Set("Content-Type", ct)
+		part, err := mp.CreatePart(hdr)
+		if err == nil {
+			err = EncryptTwofishCBCStream(part, partR, hexkey, uint64(fi.Size()))
+		}
+		_ = mp.Close()
+		_ = pw.CloseWithError(err)
+	}()
+
+	go func() {
+		_, _, _, _ = h.httpPOSTReader(endpoint, mp.FormDataContentType(), pr)
+	}()
+
+	return partW, nil
+}
