@@ -47,6 +47,7 @@ func (c *Client) SetCryptoPassword(cryptoPassword string) {
 		c.CryptoSalt = salt
 	}
 	c.cryptoHexKey, _ = api.DeriveCryptoKey(cryptoPassword, c.CryptoSalt)
+	c.httpc.SetCryptoKeyHex(c.cryptoHexKey)
 }
 
 func (c *Client) LoginWithUsernameAndPassword(email, password string) error {
@@ -104,6 +105,20 @@ func (c *Client) ListFolderTrash(folderID uint64) ([]api.Item, error) {
 
 func (c *Client) ListVersions(item api.Item) ([]api.FileVersion, error) {
 	return api.ListVersions(c.httpc, item)
+}
+
+func (c *Client) CreateFolder(parentID uint64, name string) error {
+	if err := c.defaultAuthChecks(false); err != nil {
+		return err
+	}
+	return api.CreateFolder(c.httpc, parentID, name, false)
+}
+
+func (c *Client) CreateFolderEncrypted(parentID uint64, name string) error {
+	if err := c.defaultAuthChecks(true); err != nil {
+		return err
+	}
+	return api.CreateFolder(c.httpc, parentID, name, true)
 }
 
 func (c *Client) UploadFile(folderID uint64, fileName string) error {

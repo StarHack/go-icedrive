@@ -16,12 +16,13 @@ import (
 )
 
 type HTTPClient struct {
-	c       *http.Client
-	jar     http.CookieJar
-	bearer  string
-	debug   bool
-	headers string
-	apiBase string
+	c            *http.Client
+	jar          http.CookieJar
+	bearer       string
+	debug        bool
+	headers      string
+	apiBase      string
+	cryptoKeyHex string
 }
 
 func NewHTTPClientWithEnv() *HTTPClient {
@@ -40,8 +41,16 @@ func (h *HTTPClient) SetBearerToken(t string) {
 	h.bearer = t
 }
 
+func (h *HTTPClient) SetCryptoKeyHex(hex string) {
+	h.cryptoKeyHex = hex
+}
+
 func (h *HTTPClient) GetBearerToken() string {
 	return h.bearer
+}
+
+func (h *HTTPClient) GetCryptoKeyHex() string {
+	return h.cryptoKeyHex
 }
 
 var headerWhitelist = []string{

@@ -16,8 +16,16 @@ func RenameFile(h *HTTPClient, item Item, newName string, keepExt bool) error {
 	var buf bytes.Buffer
 	w := multipart.NewWriter(&buf)
 	_ = w.WriteField("request", "file-rename")
-	_ = w.WriteField("filename", newName)
 	_ = w.WriteField("id", item.UID)
+	if item.Crypto == 1 {
+		_ = w.WriteField("crypto", "1")
+		encFileName, err := EncryptFilename(h.GetCryptoKeyHex(), newName)
+		if err == nil {
+			_ = w.WriteField("filename", encFileName)
+		}
+	} else {
+		_ = w.WriteField("filename", newName)
+	}
 	if keepExt {
 		_ = w.WriteField("keep_ext", "true")
 	} else {
@@ -53,8 +61,18 @@ func RenameFolder(h *HTTPClient, item Item, newName string) error {
 	var buf bytes.Buffer
 	w := multipart.NewWriter(&buf)
 	_ = w.WriteField("request", "folder-rename")
-	_ = w.WriteField("filename", newName)
 	_ = w.WriteField("id", item.UID)
+
+	if item.Crypto == 1 {
+		_ = w.WriteField("crypto", "1")
+		encFileName, err := EncryptFilename(h.GetCryptoKeyHex(), newName)
+		if err == nil {
+			_ = w.WriteField("filename", encFileName)
+		}
+	} else {
+		_ = w.WriteField("filename", newName)
+	}
+
 	if err := w.Close(); err != nil {
 		return err
 	}
@@ -78,7 +96,7 @@ func RenameFolder(h *HTTPClient, item Item, newName string) error {
 	return nil
 }
 
-func CreateFolder(h *HTTPClient, parentId uint64, name string) error {
+func CreateFolder(h *HTTPClient, parentId uint64, name string, crypto bool) error {
 	if h == nil {
 		h = NewHTTPClientWithEnv()
 	}
@@ -87,7 +105,15 @@ func CreateFolder(h *HTTPClient, parentId uint64, name string) error {
 	_ = w.WriteField("request", "folder-create")
 	_ = w.WriteField("type", "folder-create")
 	_ = w.WriteField("parentId", strconv.FormatUint(parentId, 10))
-	_ = w.WriteField("filename", name)
+	if crypto {
+		_ = w.WriteField("crypto", "1")
+		encFileName, err := EncryptFilename(h.GetCryptoKeyHex(), name)
+		if err == nil {
+			_ = w.WriteField("filename", encFileName)
+		}
+	} else {
+		_ = w.WriteField("filename", name)
+	}
 	if err := w.Close(); err != nil {
 		return err
 	}
