@@ -51,6 +51,23 @@ type UploadResponse struct {
 	FileObj   UploadFileObj `json:"fileObj"`
 }
 
+type uploadWriteCloser struct {
+	w    *io.PipeWriter
+	wait func() error
+}
+
+func (u *uploadWriteCloser) Write(p []byte) (int, error) {
+	return u.w.Write(p)
+}
+
+func (u *uploadWriteCloser) Close() error {
+	_ = u.w.Close()
+	if u.wait != nil {
+		return u.wait()
+	}
+	return nil
+}
+
 func GetUploadEndpoints(h *HTTPClient) ([]string, error) {
 	if h == nil {
 		h = NewHTTPClientWithEnv()
@@ -227,6 +244,7 @@ func NewUploadFileWriter(h *HTTPClient, folderID uint64, filename string) (io.Wr
 	_ = mp.SetBoundary("----geckoformboundary" + randHex(16))
 
 	partR, partW := io.Pipe()
+	errCh := make(chan error, 1)
 
 	go func() {
 		_ = mp.WriteField("folderId", strconv.FormatUint(folderID, 10))
@@ -243,10 +261,25 @@ func NewUploadFileWriter(h *HTTPClient, folderID uint64, filename string) (io.Wr
 	}()
 
 	go func() {
-		_, _, _, _ = h.httpPOSTReader(endpoint, mp.FormDataContentType(), pr)
+		status, _, body, err := h.httpPOSTReader(endpoint, mp.FormDataContentType(), pr)
+		if err == nil && status >= 400 {
+			err = fmt.Errorf("upload failed with status %d", status)
+		}
+		if err == nil {
+			var out UploadResponse
+			if e := json.Unmarshal(body, &out); e == nil && out.Error {
+				err = fmt.Errorf("upload error: %s", out.Message)
+			}
+		}
+		errCh <- err
 	}()
 
-	return partW, nil
+	return &uploadWriteCloser{
+		w: partW,
+		wait: func() error {
+			return <-errCh
+		},
+	}, nil
 }
 
 func NewUploadFileEncryptedWriter(h *HTTPClient, folderID uint64, filename string, hexkey string) (io.WriteCloser, error) {
@@ -274,6 +307,7 @@ func NewUploadFileEncryptedWriter(h *HTTPClient, folderID uint64, filename strin
 	_ = mp.SetBoundary("----geckoformboundary" + randHex(16))
 
 	partR, partW := io.Pipe()
+	errCh := make(chan error, 1)
 
 	go func() {
 		encryptedFilename, _ := EncryptFilename(hexkey, filename)
@@ -293,8 +327,23 @@ func NewUploadFileEncryptedWriter(h *HTTPClient, folderID uint64, filename strin
 	}()
 
 	go func() {
-		_, _, _, _ = h.httpPOSTReader(endpoint, mp.FormDataContentType(), pr)
+		status, _, body, err := h.httpPOSTReader(endpoint, mp.FormDataContentType(), pr)
+		if err == nil && status >= 400 {
+			err = fmt.Errorf("upload failed with status %d", status)
+		}
+		if err == nil {
+			var out UploadResponse
+			if e := json.Unmarshal(body, &out); e == nil && out.Error {
+				err = fmt.Errorf("upload error: %s", out.Message)
+			}
+		}
+		errCh <- err
 	}()
 
-	return partW, nil
+	return &uploadWriteCloser{
+		w: partW,
+		wait: func() error {
+			return <-errCh
+		},
+	}, nil
 }
