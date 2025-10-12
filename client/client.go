@@ -14,7 +14,7 @@ type Client struct {
 	Token          string
 	cryptoPassword string
 	CryptoSalt     string
-	cryptoHexKey   string
+	CryptoHexKey   string
 }
 
 func NewClient() *Client {
@@ -30,7 +30,7 @@ func (c *Client) defaultAuthChecks(crypto bool) error {
 	if c.user == nil {
 		return errors.New("login first")
 	}
-	if crypto && c.cryptoHexKey == "" {
+	if crypto && c.CryptoHexKey == "" {
 		return errors.New("set crypto password first")
 	}
 	return nil
@@ -46,8 +46,8 @@ func (c *Client) SetCryptoPassword(cryptoPassword string) {
 		_, salt, _ := api.FetchCryptoSaltAndStoredHash(c.httpc)
 		c.CryptoSalt = salt
 	}
-	c.cryptoHexKey, _ = api.DeriveCryptoKey(cryptoPassword, c.CryptoSalt)
-	c.httpc.SetCryptoKeyHex(c.cryptoHexKey)
+	c.CryptoHexKey, _ = api.DeriveCryptoKey(cryptoPassword, c.CryptoSalt)
+	c.httpc.SetCryptoKeyHex(c.CryptoHexKey)
 }
 
 func (c *Client) LoginWithUsernameAndPassword(email, password string) error {
@@ -133,7 +133,7 @@ func (c *Client) UploadFileEncrypted(folderID uint64, fileName string) error {
 	if err := c.defaultAuthChecks(true); err != nil {
 		return err
 	}
-	_, err := api.UploadEncryptedFile(c.httpc, folderID, fileName, c.cryptoHexKey)
+	_, err := api.UploadEncryptedFile(c.httpc, folderID, fileName, c.CryptoHexKey)
 	return err
 }
 
@@ -148,7 +148,7 @@ func (c *Client) UploadFileEncryptedWriter(folderID uint64, fileName string) (io
 	if err := c.defaultAuthChecks(true); err != nil {
 		return nil, err
 	}
-	return api.NewUploadFileEncryptedWriter(c.httpc, folderID, fileName, c.cryptoHexKey)
+	return api.NewUploadFileEncryptedWriter(c.httpc, folderID, fileName, c.CryptoHexKey)
 }
 
 func (c *Client) DownloadFile(item api.Item, destPath string) error {
