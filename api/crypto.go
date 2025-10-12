@@ -348,6 +348,191 @@ func EncryptTwofishCBCStream(dst io.Writer, src io.Reader, hexkey string, totalS
 	}
 }
 
+func EncryptTwofishCBCStreamUnknownSize(dst io.Writer, src io.Reader, hexkey string) error {
+	key, err := hex.DecodeString(hexkey)
+	if err != nil {
+		return err
+	}
+	if l := len(key); l != 16 && l != 24 && l != 32 {
+		return fmt.Errorf("invalid key length: %d", l)
+	}
+	block, err := twofish.NewCipher(key)
+	if err != nil {
+		return err
+	}
+
+	const (
+		blockSize = 16
+		chunkSize = 4 * 1024 * 1024
+	)
+
+	// Read plaintext into memory in fixed-size chunks (no temp files).
+	var (
+		chunks    [][]byte
+		totalSize uint64
+	)
+	for {
+		buf := make([]byte, 128*1024)
+		n, rerr := src.Read(buf)
+		if n > 0 {
+			totalSize += uint64(n)
+			// keep exact size written
+			chunk := make([]byte, n)
+			copy(chunk, buf[:n])
+			chunks = append(chunks, chunk)
+		}
+		if rerr != nil {
+			if rerr == io.EOF {
+				break
+			}
+			return rerr
+		}
+	}
+
+	iv := make([]byte, blockSize)
+	if _, err := rand.Read(iv); err != nil {
+		return err
+	}
+
+	var numPadding byte
+	if m := totalSize % blockSize; m != 0 {
+		numPadding = byte(blockSize - m)
+	}
+
+	// Header (same format as size-known variant)
+	headerPlain := make([]byte, 2*blockSize)
+	copy(headerPlain[:blockSize], iv)
+	headerPlain[blockSize] = numPadding
+	headerPlain[blockSize+1] = 0
+
+	headerIV := []byte("1234567887654321")
+	headerCBC := cipher.NewCBCEncrypter(block, headerIV)
+	headerCipher := make([]byte, len(headerPlain))
+	headerCBC.CryptBlocks(headerCipher, headerPlain)
+
+	if _, err := dst.Write(headerCipher); err != nil {
+		return err
+	}
+
+	// Encrypt body with CBC and the same 4 MiB chunking semantics
+	newCBC := func() cipher.BlockMode { return cipher.NewCBCEncrypter(block, iv) }
+	cbc := newCBC()
+	remaining := chunkSize - 2*blockSize
+
+	// stream over chunks, handling block alignment and per-chunk resets
+	var carry []byte
+	writeBlocks := func(data []byte, final bool) error {
+		data = append(carry, data...)
+		for {
+			toProcess := len(data)
+			if toProcess == 0 {
+				carry = data
+				return nil
+			}
+			// respect remaining per-chunk window
+			if toProcess > remaining {
+				toProcess = remaining
+			}
+			// only full blocks except at the very end when final
+			if !final {
+				toProcess = (toProcess / blockSize) * blockSize
+			} else {
+				// for final, we may need to pad
+				if (toProcess % blockSize) != 0 {
+					// leave partial block in carry to be padded later
+					toProcess = (toProcess / blockSize) * blockSize
+				}
+			}
+			if toProcess == 0 {
+				carry = data
+				return nil
+			}
+			out := make([]byte, toProcess)
+			cbc.CryptBlocks(out, data[:toProcess])
+			if _, err := dst.Write(out); err != nil {
+				return err
+			}
+			data = data[toProcess:]
+			remaining -= toProcess
+			if remaining == 0 && !(final && len(data) == 0) {
+				cbc = newCBC()
+				remaining = chunkSize
+			}
+		}
+	}
+
+	for i := 0; i < len(chunks); i++ {
+		final := i == len(chunks)-1
+		if err := writeBlocks(chunks[i], final); err != nil {
+			return err
+		}
+	}
+
+	// Finalize: pad the last partial block if needed and encrypt it (and any remainder windows)
+	if pad := int(numPadding); pad > 0 {
+		last := append(carry, make([]byte, pad)...)
+		if len(last)%blockSize != 0 {
+			return fmt.Errorf("final block size invalid")
+		}
+		for len(last) > 0 {
+			toProcess := len(last)
+			if toProcess > remaining {
+				toProcess = remaining
+			}
+			toProcess = (toProcess / blockSize) * blockSize
+			if toProcess == 0 {
+				// reset if window exhausted
+				cbc = newCBC()
+				remaining = chunkSize
+				continue
+			}
+			out := make([]byte, toProcess)
+			cbc.CryptBlocks(out, last[:toProcess])
+			if _, err := dst.Write(out); err != nil {
+				return err
+			}
+			last = last[toProcess:]
+			remaining -= toProcess
+			if remaining == 0 && len(last) > 0 {
+				cbc = newCBC()
+				remaining = chunkSize
+			}
+		}
+	} else {
+		// no padding; any carry must be empty or full-block aligned
+		if len(carry) != 0 {
+			if len(carry)%blockSize != 0 {
+				return fmt.Errorf("final block size invalid")
+			}
+			for len(carry) > 0 {
+				toProcess := len(carry)
+				if toProcess > remaining {
+					toProcess = remaining
+				}
+				toProcess = (toProcess / blockSize) * blockSize
+				if toProcess == 0 {
+					cbc = newCBC()
+					remaining = chunkSize
+					continue
+				}
+				out := make([]byte, toProcess)
+				cbc.CryptBlocks(out, carry[:toProcess])
+				if _, err := dst.Write(out); err != nil {
+					return err
+				}
+				carry = carry[toProcess:]
+				remaining -= toProcess
+				if remaining == 0 && len(carry) > 0 {
+					cbc = newCBC()
+					remaining = chunkSize
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
 func FetchCryptoSaltAndStoredHash(h *HTTPClient) (storedHex, salt string, err error) {
 	if h == nil {
 		h = NewHTTPClientWithEnv()

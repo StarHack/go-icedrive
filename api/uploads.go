@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type GeoFileserverList struct {
@@ -229,11 +230,7 @@ func NewUploadFileWriter(h *HTTPClient, folderID uint64, filename string) (io.Wr
 	}
 	endpoint := endpoints[0]
 
-	fi, err := os.Stat(filename)
-	if err != nil {
-		return nil, err
-	}
-	moddate := float64(fi.ModTime().UnixNano()) / 1e9
+	moddate := float64(time.Now().UnixNano()) / 1e9
 	ct := mime.TypeByExtension(strings.ToLower(filepath.Ext(filename)))
 	if ct == "" {
 		ct = "application/octet-stream"
@@ -292,11 +289,7 @@ func NewUploadFileEncryptedWriter(h *HTTPClient, folderID uint64, filename strin
 	}
 	endpoint := endpoints[0]
 
-	fi, err := os.Stat(filename)
-	if err != nil {
-		return nil, err
-	}
-	moddate := float64(fi.ModTime().UnixNano()) / 1e9
+	moddate := float64(time.Now().UnixNano()) / 1e9
 	ct := mime.TypeByExtension(strings.ToLower(filepath.Ext(filename)))
 	if ct == "" {
 		ct = "application/octet-stream"
@@ -310,7 +303,7 @@ func NewUploadFileEncryptedWriter(h *HTTPClient, folderID uint64, filename strin
 	errCh := make(chan error, 1)
 
 	go func() {
-		encryptedFilename, _ := EncryptFilename(hexkey, filename)
+		encryptedFilename, _ := EncryptFilename(hexkey, filepath.Base(filename))
 		_ = mp.WriteField("folderId", strconv.FormatUint(folderID, 10))
 		_ = mp.WriteField("moddate", strconv.FormatFloat(moddate, 'f', -1, 64))
 		_ = mp.WriteField("custom_filename", encryptedFilename)
@@ -320,7 +313,7 @@ func NewUploadFileEncryptedWriter(h *HTTPClient, folderID uint64, filename strin
 		hdr.Set("Content-Type", ct)
 		part, err := mp.CreatePart(hdr)
 		if err == nil {
-			err = EncryptTwofishCBCStream(part, partR, hexkey, uint64(fi.Size()))
+			err = EncryptTwofishCBCStreamUnknownSize(part, partR, hexkey)
 		}
 		_ = mp.Close()
 		_ = pw.CloseWithError(err)
