@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"net/http/cookiejar"
-	"net/url"
 	"strings"
 	"time"
 
@@ -137,7 +136,7 @@ func (h *HTTPClient) SetHeaders(headers string) {
 	h.headers = headers
 }
 
-func (h *HTTPClient) addEnvHeaders(req *http.Request) {
+func (h *HTTPClient) addHeaders(req *http.Request) {
 	for _, kv := range parseEnvHeaders(h.headers) {
 		if strings.EqualFold(kv[0], "authorization") && h.bearer != "" {
 			continue
@@ -146,9 +145,6 @@ func (h *HTTPClient) addEnvHeaders(req *http.Request) {
 	}
 	if h.bearer != "" {
 		req.Header.Set("Authorization", "Bearer "+h.bearer)
-	}
-	if ck := EnvCookie(); ck != "" && req.Header.Get("Cookie") == "" {
-		req.Header.Set("Cookie", ck)
 	}
 	if req.Header.Get("User-Agent") == "" {
 		req.Header.Set("User-Agent", "Mozilla/5.0")
@@ -208,7 +204,7 @@ func (h *HTTPClient) httpGET(u string) (int, http.Header, []byte, error) {
 	}
 
 	req, _ := http.NewRequest("GET", h.apiBase+u, nil)
-	h.addEnvHeaders(req)
+	h.addHeaders(req)
 	h.printHeaders(req)
 	res, err := h.c.Do(req)
 	if err != nil {
@@ -227,7 +223,7 @@ func (h *HTTPClient) httpPOST(u string, contentType string, body []byte) (int, h
 		h = NewHTTPClientWithEnv()
 	}
 	req, _ := http.NewRequest("POST", h.apiBase+u, bytes.NewReader(body))
-	h.addEnvHeaders(req)
+	h.addHeaders(req)
 	if contentType != "" {
 		req.Header.Set("Content-Type", contentType)
 	}
@@ -249,7 +245,7 @@ func (h *HTTPClient) httpPOSTReader(u string, contentType string, body io.Reader
 		h = NewHTTPClientWithEnv()
 	}
 	req, _ := http.NewRequest("POST", u, body)
-	h.addEnvHeaders(req)
+	h.addHeaders(req)
 	if contentType != "" {
 		req.Header.Set("Content-Type", contentType)
 	}
@@ -264,37 +260,6 @@ func (h *HTTPClient) httpPOSTReader(u string, contentType string, body io.Reader
 		return res.StatusCode, res.Header, nil, err
 	}
 	return res.StatusCode, res.Header, b, nil
-}
-
-func (h *HTTPClient) InjectEnvCookies() {
-	ck := EnvCookie()
-	if ck == "" || h.jar == nil {
-		return
-	}
-	parseCookieStr := func(raw string) []*http.Cookie {
-		var out []*http.Cookie
-		parts := strings.Split(raw, ";")
-		for _, p := range parts {
-			p = strings.TrimSpace(p)
-			if p == "" {
-				continue
-			}
-			kv := strings.SplitN(p, "=", 2)
-			if len(kv) != 2 {
-				continue
-			}
-			out = append(out, &http.Cookie{
-				Name:  strings.TrimSpace(kv[0]),
-				Value: strings.TrimSpace(kv[1]),
-				Path:  "/",
-			})
-		}
-		return out
-	}
-	for _, host := range []string{"https://icedrive.net", "https://apis.icedrive.net"} {
-		u, _ := url.Parse(host)
-		h.jar.SetCookies(u, parseCookieStr(ck))
-	}
 }
 
 func (h *HTTPClient) SetDebug(debug bool) {

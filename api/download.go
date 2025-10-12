@@ -94,7 +94,7 @@ func DownloadFile(h *HTTPClient, item Item, destPath string, crypted bool) error
 	if err != nil {
 		return err
 	}
-	h.addEnvHeaders(req)
+	h.addHeaders(req)
 	req.Header.Set("Accept", "*/*")
 	req.Header.Set("Accept-Encoding", "identity")
 
@@ -143,7 +143,7 @@ func OpenDownloadStream(h *HTTPClient, item Item, crypted bool) (io.ReadCloser, 
 	if err != nil {
 		return nil, err
 	}
-	h.addEnvHeaders(req)
+	h.addHeaders(req)
 	req.Header.Set("Accept", "*/*")
 	req.Header.Set("Accept-Encoding", "identity")
 	resp, err := h.c.Do(req)
