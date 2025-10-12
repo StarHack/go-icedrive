@@ -84,7 +84,7 @@ func GetCollection(h *HTTPClient, folderID uint64, cType CollectionType) (*Colle
 
 	if cType == CollectionCrypto {
 		for i := range resp.Data {
-			if decryptedFilename, err := DecryptFilename(EnvCryptoKey64(), resp.Data[i].Filename); err == nil {
+			if decryptedFilename, err := DecryptFilename(h.GetCryptoKeyHex(), resp.Data[i].Filename); err == nil {
 				resp.Data[i].Filename = decryptedFilename
 			}
 		}

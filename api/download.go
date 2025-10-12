@@ -114,7 +114,7 @@ func DownloadFile(h *HTTPClient, item Item, destPath string, crypted bool) error
 			return err
 		}
 	} else {
-		if err := DecryptTwofishCBCStream(out, res.Body, EnvCryptoKey64()); err != nil {
+		if err := DecryptTwofishCBCStream(out, res.Body, h.GetCryptoKeyHex()); err != nil {
 			return err
 		}
 	}
@@ -161,7 +161,7 @@ func OpenDownloadStream(h *HTTPClient, item Item, crypted bool) (io.ReadCloser, 
 	pr, pw := io.Pipe()
 	go func() {
 		defer resp.Body.Close()
-		if err := DecryptTwofishCBCStream(pw, resp.Body, EnvCryptoKey64()); err != nil {
+		if err := DecryptTwofishCBCStream(pw, resp.Body, h.GetCryptoKeyHex()); err != nil {
 			_ = pw.CloseWithError(err)
 			return
 		}
