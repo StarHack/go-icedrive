@@ -187,6 +187,11 @@ func Delete(h *HTTPClient, item Item) error {
 	w := multipart.NewWriter(&buf)
 	_ = w.WriteField("request", "erase")
 	_ = w.WriteField("items", uid)
+
+	if item.Crypto == 1 {
+		_ = w.WriteField("crypto", "1")
+	}
+
 	if err := w.Close(); err != nil {
 		return err
 	}
