@@ -143,7 +143,6 @@ func DecryptTwofishCBCStream(dst io.Writer, src io.Reader, hexkey string) error 
 	if err != nil {
 		return err
 	}
-
 	if l := len(key); l != 16 && l != 24 && l != 32 {
 		return fmt.Errorf("invalid key length: %d", l)
 	}
@@ -173,12 +172,10 @@ func DecryptTwofishCBCStream(dst io.Writer, src io.Reader, hexkey string) error 
 
 	newCBC := func() cipher.BlockMode { return cipher.NewCBCDecrypter(block, contentIV) }
 	cbc := newCBC()
-
 	chunkRemaining := chunkSize - 2*blockSize
 
 	buf := make([]byte, 128*1024)
 	var carry []byte
-	var wroteAny bool
 
 	writeOut := func(b []byte, final bool) error {
 		if final {
@@ -191,9 +188,6 @@ func DecryptTwofishCBCStream(dst io.Writer, src io.Reader, hexkey string) error 
 			return nil
 		}
 		_, err := dst.Write(b)
-		if err == nil {
-			wroteAny = true
-		}
 		return err
 	}
 
@@ -214,6 +208,7 @@ func DecryptTwofishCBCStream(dst io.Writer, src io.Reader, hexkey string) error 
 				cbc.CryptBlocks(out, data[:toProcess])
 				data = data[toProcess:]
 				chunkRemaining -= toProcess
+
 				lastRead := rerr == io.EOF && len(data) == 0
 				if lastRead {
 					if err := writeOut(out, true); err != nil {
@@ -224,6 +219,7 @@ func DecryptTwofishCBCStream(dst io.Writer, src io.Reader, hexkey string) error 
 						return err
 					}
 				}
+
 				if chunkRemaining == 0 && !lastRead {
 					cbc = newCBC()
 					chunkRemaining = chunkSize
@@ -236,9 +232,6 @@ func DecryptTwofishCBCStream(dst io.Writer, src io.Reader, hexkey string) error 
 			if rerr == io.EOF {
 				if len(carry) != 0 {
 					return io.ErrUnexpectedEOF
-				}
-				if !wroteAny && numPadding != 0 {
-					return fmt.Errorf("unexpected empty body")
 				}
 				return nil
 			}
