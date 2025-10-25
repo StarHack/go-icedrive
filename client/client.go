@@ -206,3 +206,10 @@ func (c *Client) Rename(item api.Item, newName string) error {
 func (c *Client) Move(targetFolderID uint64, items ...api.Item) error {
 	return api.Move(c.httpc, targetFolderID, items...)
 }
+
+func (c *Client) GetPlainSize(item api.Item) (int64, error) {
+	if err := c.defaultAuthChecks(item.Crypto == 1); err != nil {
+		return 0, err
+	}
+	return api.GetPlainSize(c.httpc, item, item.Crypto == 1)
+}
