@@ -3,6 +3,7 @@ package client
 import (
 	"errors"
 	"io"
+	"sync"
 
 	"github.com/StarHack/go-icedrive/api"
 )
@@ -42,7 +43,10 @@ func (c *Client) acquire() *api.HTTPClient {
 }
 
 func (c *Client) release(h *api.HTTPClient) {
-	c.pool <- h
+	select {
+	case c.pool <- h:
+	default:
+	}
 }
 
 func (c *Client) defaultAuthChecks(crypto bool) error {
@@ -78,13 +82,12 @@ func (c *Client) SetCryptoPassword(cryptoPassword string) {
 func (c *Client) LoginWithUsernameAndPassword(email, password string) error {
 	h := c.acquire()
 	user, err := api.LoginWithUsernameAndPassword(h, email, password, c.hmacKeyHex)
+	c.release(h)
 	if err != nil {
-		c.release(h)
 		return err
 	}
 	c.user = user
 	c.Token = h.GetBearerToken()
-	c.release(h)
 	for _, oh := range c.all {
 		if oh.GetBearerToken() == c.Token {
 			continue
@@ -97,13 +100,12 @@ func (c *Client) LoginWithUsernameAndPassword(email, password string) error {
 func (c *Client) LoginWithBearerToken(token string) error {
 	h := c.acquire()
 	user, err := api.LoginWithBearerToken(h, token)
+	c.release(h)
 	if err != nil {
-		c.release(h)
 		return err
 	}
 	c.user = user
 	c.Token = h.GetBearerToken()
-	c.release(h)
 	for _, oh := range c.all {
 		if oh.GetBearerToken() == c.Token {
 			continue
@@ -118,8 +120,8 @@ func (c *Client) ListFolder(folderID uint64) ([]api.Item, error) {
 		return nil, err
 	}
 	h := c.acquire()
+	defer c.release(h)
 	response, err := api.GetCollection(h, folderID, api.CollectionCloud)
-	c.release(h)
 	if err != nil {
 		return nil, err
 	}
@@ -131,8 +133,8 @@ func (c *Client) ListFolderEncrypted(folderID uint64) ([]api.Item, error) {
 		return nil, err
 	}
 	h := c.acquire()
+	defer c.release(h)
 	response, err := api.GetCollection(h, folderID, api.CollectionCrypto)
-	c.release(h)
 	if err != nil {
 		return nil, err
 	}
@@ -144,8 +146,8 @@ func (c *Client) ListFolderTrash(folderID uint64) ([]api.Item, error) {
 		return nil, err
 	}
 	h := c.acquire()
+	defer c.release(h)
 	response, err := api.GetCollection(h, folderID, api.CollectionTrash)
-	c.release(h)
 	if err != nil {
 		return nil, err
 	}
@@ -154,9 +156,8 @@ func (c *Client) ListFolderTrash(folderID uint64) ([]api.Item, error) {
 
 func (c *Client) ListVersions(item api.Item) ([]api.FileVersion, error) {
 	h := c.acquire()
-	v, err := api.ListVersions(h, item)
-	c.release(h)
-	return v, err
+	defer c.release(h)
+	return api.ListVersions(h, item)
 }
 
 func (c *Client) CreateFolder(parentID uint64, name string) error {
@@ -164,9 +165,8 @@ func (c *Client) CreateFolder(parentID uint64, name string) error {
 		return err
 	}
 	h := c.acquire()
-	err := api.CreateFolder(h, parentID, name, false)
-	c.release(h)
-	return err
+	defer c.release(h)
+	return api.CreateFolder(h, parentID, name, false)
 }
 
 func (c *Client) CreateFolderEncrypted(parentID uint64, name string) error {
@@ -174,9 +174,8 @@ func (c *Client) CreateFolderEncrypted(parentID uint64, name string) error {
 		return err
 	}
 	h := c.acquire()
-	err := api.CreateFolder(h, parentID, name, true)
-	c.release(h)
-	return err
+	defer c.release(h)
+	return api.CreateFolder(h, parentID, name, true)
 }
 
 func (c *Client) UploadFile(folderID uint64, fileName string) error {
@@ -184,8 +183,8 @@ func (c *Client) UploadFile(folderID uint64, fileName string) error {
 		return err
 	}
 	h := c.acquire()
+	defer c.release(h)
 	_, err := api.UploadFile(h, folderID, fileName)
-	c.release(h)
 	return err
 }
 
@@ -194,19 +193,38 @@ func (c *Client) UploadFileEncrypted(folderID uint64, fileName string) error {
 		return err
 	}
 	h := c.acquire()
+	defer c.release(h)
 	_, err := api.UploadEncryptedFile(h, folderID, fileName, c.CryptoHexKey)
-	c.release(h)
 	return err
 }
 
 type wcWithRelease struct {
 	io.WriteCloser
+	once    sync.Once
 	release func()
 }
 
 func (w *wcWithRelease) Close() error {
-	err := w.WriteCloser.Close()
-	w.release()
+	var err error
+	if w.WriteCloser != nil {
+		err = w.WriteCloser.Close()
+	}
+	w.once.Do(w.release)
+	return err
+}
+
+type rcWithRelease struct {
+	io.ReadCloser
+	once    sync.Once
+	release func()
+}
+
+func (r *rcWithRelease) Close() error {
+	var err error
+	if r.ReadCloser != nil {
+		err = r.ReadCloser.Close()
+	}
+	r.once.Do(r.release)
 	return err
 }
 
@@ -241,9 +259,8 @@ func (c *Client) DownloadFile(item api.Item, destPath string) error {
 		return err
 	}
 	h := c.acquire()
-	err := api.DownloadFile(h, item, destPath, false)
-	c.release(h)
-	return err
+	defer c.release(h)
+	return api.DownloadFile(h, item, destPath, false)
 }
 
 func (c *Client) DownloadFileStream(item api.Item) (io.ReadCloser, error) {
@@ -264,20 +281,8 @@ func (c *Client) DownloadFileEncrypted(item api.Item, destPath string) error {
 		return err
 	}
 	h := c.acquire()
-	err := api.DownloadFile(h, item, destPath, true)
-	c.release(h)
-	return err
-}
-
-type rcWithRelease struct {
-	io.ReadCloser
-	release func()
-}
-
-func (r *rcWithRelease) Close() error {
-	err := r.ReadCloser.Close()
-	r.release()
-	return err
+	defer c.release(h)
+	return api.DownloadFile(h, item, destPath, true)
 }
 
 func (c *Client) DownloadFileEncryptedStream(item api.Item) (io.ReadCloser, error) {
@@ -295,49 +300,41 @@ func (c *Client) DownloadFileEncryptedStream(item api.Item) (io.ReadCloser, erro
 
 func (c *Client) TrashItem(item api.Item) error {
 	h := c.acquire()
-	err := api.TrashAdd(h, item)
-	c.release(h)
-	return err
+	defer c.release(h)
+	return api.TrashAdd(h, item)
 }
 
 func (c *Client) TrashEraseAll() error {
 	h := c.acquire()
-	err := api.TrashEraseAll(h)
-	c.release(h)
-	return err
+	defer c.release(h)
+	return api.TrashEraseAll(h)
 }
 
 func (c *Client) RestoreTrashedItem(item api.Item) error {
 	h := c.acquire()
-	err := api.TrashRestore(h, item)
-	c.release(h)
-	return err
+	defer c.release(h)
+	return api.TrashRestore(h, item)
 }
 
 func (c *Client) Delete(item api.Item) error {
 	h := c.acquire()
-	err := api.Delete(h, item)
-	c.release(h)
-	return err
+	defer c.release(h)
+	return api.Delete(h, item)
 }
 
 func (c *Client) Rename(item api.Item, newName string) error {
 	h := c.acquire()
-	var err error
+	defer c.release(h)
 	if item.IsFolder == 1 {
-		err = api.RenameFolder(h, item, newName)
-	} else {
-		err = api.RenameFile(h, item, newName, false)
+		return api.RenameFolder(h, item, newName)
 	}
-	c.release(h)
-	return err
+	return api.RenameFile(h, item, newName, false)
 }
 
 func (c *Client) Move(targetFolderID uint64, items ...api.Item) error {
 	h := c.acquire()
-	err := api.Move(h, targetFolderID, items...)
-	c.release(h)
-	return err
+	defer c.release(h)
+	return api.Move(h, targetFolderID, items...)
 }
 
 func (c *Client) GetPlainSize(item api.Item) (int64, error) {
@@ -345,7 +342,6 @@ func (c *Client) GetPlainSize(item api.Item) (int64, error) {
 		return 0, err
 	}
 	h := c.acquire()
-	sz, err := api.GetPlainSize(h, item, item.Crypto == 1)
-	c.release(h)
-	return sz, err
+	defer c.release(h)
+	return api.GetPlainSize(h, item, item.Crypto == 1)
 }
