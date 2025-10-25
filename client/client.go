@@ -7,8 +7,11 @@ import (
 	"github.com/StarHack/go-icedrive/api"
 )
 
+const clientPoolSize = 3
+
 type Client struct {
-	httpc          *api.HTTPClient
+	pool           chan *api.HTTPClient
+	all            []*api.HTTPClient
 	hmacKeyHex     string
 	user           *api.User
 	Token          string
@@ -18,12 +21,28 @@ type Client struct {
 }
 
 func NewClient() *Client {
-	var client = Client{httpc: api.NewHTTPClientWithEnv()}
-	client.hmacKeyHex = "436f6e67726174756c6174696f6e7320494620796f7520676f742054484953206661722121203b2921203a29"
-	client.SetDebug(false)
-	client.httpc.SetApiBase("https://apis.icedrive.net/v3/mobile")
-	client.httpc.SetHeaders("User-Agent: icedrive-ios/2.2.2")
-	return &client
+	c := &Client{
+		pool: make(chan *api.HTTPClient, clientPoolSize),
+		all:  make([]*api.HTTPClient, 0, clientPoolSize),
+	}
+	for i := 0; i < clientPoolSize; i++ {
+		h := api.NewHTTPClientWithEnv()
+		h.SetApiBase("https://apis.icedrive.net/v3/mobile")
+		h.SetHeaders("User-Agent: icedrive-ios/2.2.2")
+		c.pool <- h
+		c.all = append(c.all, h)
+	}
+	c.hmacKeyHex = "436f6e67726174756c6174696f6e7320494620796f7520676f742054484953206661722121203b2921203a29"
+	c.SetDebug(false)
+	return c
+}
+
+func (c *Client) acquire() *api.HTTPClient {
+	return <-c.pool
+}
+
+func (c *Client) release(h *api.HTTPClient) {
+	c.pool <- h
 }
 
 func (c *Client) defaultAuthChecks(crypto bool) error {
@@ -37,36 +56,60 @@ func (c *Client) defaultAuthChecks(crypto bool) error {
 }
 
 func (c *Client) SetDebug(debug bool) {
-	c.httpc.SetDebug(debug)
+	for _, h := range c.all {
+		h.SetDebug(debug)
+	}
 }
 
 func (c *Client) SetCryptoPassword(cryptoPassword string) {
 	c.cryptoPassword = cryptoPassword
 	if c.CryptoSalt == "" {
-		_, salt, _ := api.FetchCryptoSaltAndStoredHash(c.httpc)
+		h := c.acquire()
+		_, salt, _ := api.FetchCryptoSaltAndStoredHash(h)
+		c.release(h)
 		c.CryptoSalt = salt
 	}
 	c.CryptoHexKey, _ = api.DeriveCryptoKey(cryptoPassword, c.CryptoSalt)
-	c.httpc.SetCryptoKeyHex(c.CryptoHexKey)
+	for _, h := range c.all {
+		h.SetCryptoKeyHex(c.CryptoHexKey)
+	}
 }
 
 func (c *Client) LoginWithUsernameAndPassword(email, password string) error {
-	user, err := api.LoginWithUsernameAndPassword(c.httpc, email, password, c.hmacKeyHex)
+	h := c.acquire()
+	user, err := api.LoginWithUsernameAndPassword(h, email, password, c.hmacKeyHex)
 	if err != nil {
+		c.release(h)
 		return err
 	}
 	c.user = user
-	c.Token = c.httpc.GetBearerToken()
+	c.Token = h.GetBearerToken()
+	c.release(h)
+	for _, oh := range c.all {
+		if oh.GetBearerToken() == c.Token {
+			continue
+		}
+		_, _ = api.LoginWithBearerToken(oh, c.Token)
+	}
 	return nil
 }
 
 func (c *Client) LoginWithBearerToken(token string) error {
-	user, err := api.LoginWithBearerToken(c.httpc, token)
+	h := c.acquire()
+	user, err := api.LoginWithBearerToken(h, token)
 	if err != nil {
+		c.release(h)
 		return err
 	}
 	c.user = user
-	c.Token = c.httpc.GetBearerToken()
+	c.Token = h.GetBearerToken()
+	c.release(h)
+	for _, oh := range c.all {
+		if oh.GetBearerToken() == c.Token {
+			continue
+		}
+		_, _ = api.LoginWithBearerToken(oh, c.Token)
+	}
 	return nil
 }
 
@@ -74,7 +117,9 @@ func (c *Client) ListFolder(folderID uint64) ([]api.Item, error) {
 	if err := c.defaultAuthChecks(false); err != nil {
 		return nil, err
 	}
-	response, err := api.GetCollection(c.httpc, folderID, api.CollectionCloud)
+	h := c.acquire()
+	response, err := api.GetCollection(h, folderID, api.CollectionCloud)
+	c.release(h)
 	if err != nil {
 		return nil, err
 	}
@@ -85,7 +130,9 @@ func (c *Client) ListFolderEncrypted(folderID uint64) ([]api.Item, error) {
 	if err := c.defaultAuthChecks(true); err != nil {
 		return nil, err
 	}
-	response, err := api.GetCollection(c.httpc, folderID, api.CollectionCrypto)
+	h := c.acquire()
+	response, err := api.GetCollection(h, folderID, api.CollectionCrypto)
+	c.release(h)
 	if err != nil {
 		return nil, err
 	}
@@ -96,7 +143,9 @@ func (c *Client) ListFolderTrash(folderID uint64) ([]api.Item, error) {
 	if err := c.defaultAuthChecks(false); err != nil {
 		return nil, err
 	}
-	response, err := api.GetCollection(c.httpc, folderID, api.CollectionTrash)
+	h := c.acquire()
+	response, err := api.GetCollection(h, folderID, api.CollectionTrash)
+	c.release(h)
 	if err != nil {
 		return nil, err
 	}
@@ -104,28 +153,39 @@ func (c *Client) ListFolderTrash(folderID uint64) ([]api.Item, error) {
 }
 
 func (c *Client) ListVersions(item api.Item) ([]api.FileVersion, error) {
-	return api.ListVersions(c.httpc, item)
+	h := c.acquire()
+	v, err := api.ListVersions(h, item)
+	c.release(h)
+	return v, err
 }
 
 func (c *Client) CreateFolder(parentID uint64, name string) error {
 	if err := c.defaultAuthChecks(false); err != nil {
 		return err
 	}
-	return api.CreateFolder(c.httpc, parentID, name, false)
+	h := c.acquire()
+	err := api.CreateFolder(h, parentID, name, false)
+	c.release(h)
+	return err
 }
 
 func (c *Client) CreateFolderEncrypted(parentID uint64, name string) error {
 	if err := c.defaultAuthChecks(true); err != nil {
 		return err
 	}
-	return api.CreateFolder(c.httpc, parentID, name, true)
+	h := c.acquire()
+	err := api.CreateFolder(h, parentID, name, true)
+	c.release(h)
+	return err
 }
 
 func (c *Client) UploadFile(folderID uint64, fileName string) error {
 	if err := c.defaultAuthChecks(false); err != nil {
 		return err
 	}
-	_, err := api.UploadFile(c.httpc, folderID, fileName)
+	h := c.acquire()
+	_, err := api.UploadFile(h, folderID, fileName)
+	c.release(h)
 	return err
 }
 
@@ -133,7 +193,20 @@ func (c *Client) UploadFileEncrypted(folderID uint64, fileName string) error {
 	if err := c.defaultAuthChecks(true); err != nil {
 		return err
 	}
-	_, err := api.UploadEncryptedFile(c.httpc, folderID, fileName, c.CryptoHexKey)
+	h := c.acquire()
+	_, err := api.UploadEncryptedFile(h, folderID, fileName, c.CryptoHexKey)
+	c.release(h)
+	return err
+}
+
+type wcWithRelease struct {
+	io.WriteCloser
+	release func()
+}
+
+func (w *wcWithRelease) Close() error {
+	err := w.WriteCloser.Close()
+	w.release()
 	return err
 }
 
@@ -141,75 +214,138 @@ func (c *Client) UploadFileWriter(folderID uint64, fileName string) (io.WriteClo
 	if err := c.defaultAuthChecks(false); err != nil {
 		return nil, err
 	}
-	return api.NewUploadFileWriter(c.httpc, folderID, fileName)
+	h := c.acquire()
+	w, err := api.NewUploadFileWriter(h, folderID, fileName)
+	if err != nil {
+		c.release(h)
+		return nil, err
+	}
+	return &wcWithRelease{WriteCloser: w, release: func() { c.release(h) }}, nil
 }
 
 func (c *Client) UploadFileEncryptedWriter(folderID uint64, fileName string) (io.WriteCloser, error) {
 	if err := c.defaultAuthChecks(true); err != nil {
 		return nil, err
 	}
-	return api.NewUploadFileEncryptedWriter(c.httpc, folderID, fileName, c.CryptoHexKey)
+	h := c.acquire()
+	w, err := api.NewUploadFileEncryptedWriter(h, folderID, fileName, c.CryptoHexKey)
+	if err != nil {
+		c.release(h)
+		return nil, err
+	}
+	return &wcWithRelease{WriteCloser: w, release: func() { c.release(h) }}, nil
 }
 
 func (c *Client) DownloadFile(item api.Item, destPath string) error {
 	if err := c.defaultAuthChecks(false); err != nil {
 		return err
 	}
-	return api.DownloadFile(c.httpc, item, destPath, false)
+	h := c.acquire()
+	err := api.DownloadFile(h, item, destPath, false)
+	c.release(h)
+	return err
 }
 
 func (c *Client) DownloadFileStream(item api.Item) (io.ReadCloser, error) {
 	if err := c.defaultAuthChecks(false); err != nil {
 		return nil, err
 	}
-	return api.OpenDownloadStream(c.httpc, item, false)
+	h := c.acquire()
+	rc, err := api.OpenDownloadStream(h, item, false)
+	if err != nil {
+		c.release(h)
+		return nil, err
+	}
+	return &rcWithRelease{ReadCloser: rc, release: func() { c.release(h) }}, nil
 }
 
 func (c *Client) DownloadFileEncrypted(item api.Item, destPath string) error {
 	if err := c.defaultAuthChecks(true); err != nil {
 		return err
 	}
-	return api.DownloadFile(c.httpc, item, destPath, true)
+	h := c.acquire()
+	err := api.DownloadFile(h, item, destPath, true)
+	c.release(h)
+	return err
+}
+
+type rcWithRelease struct {
+	io.ReadCloser
+	release func()
+}
+
+func (r *rcWithRelease) Close() error {
+	err := r.ReadCloser.Close()
+	r.release()
+	return err
 }
 
 func (c *Client) DownloadFileEncryptedStream(item api.Item) (io.ReadCloser, error) {
 	if err := c.defaultAuthChecks(true); err != nil {
 		return nil, err
 	}
-	return api.OpenDownloadStream(c.httpc, item, true)
+	h := c.acquire()
+	rc, err := api.OpenDownloadStream(h, item, true)
+	if err != nil {
+		c.release(h)
+		return nil, err
+	}
+	return &rcWithRelease{ReadCloser: rc, release: func() { c.release(h) }}, nil
 }
 
 func (c *Client) TrashItem(item api.Item) error {
-	return api.TrashAdd(c.httpc, item)
+	h := c.acquire()
+	err := api.TrashAdd(h, item)
+	c.release(h)
+	return err
 }
 
 func (c *Client) TrashEraseAll() error {
-	return api.TrashEraseAll(c.httpc)
+	h := c.acquire()
+	err := api.TrashEraseAll(h)
+	c.release(h)
+	return err
 }
 
 func (c *Client) RestoreTrashedItem(item api.Item) error {
-	return api.TrashRestore(c.httpc, item)
+	h := c.acquire()
+	err := api.TrashRestore(h, item)
+	c.release(h)
+	return err
 }
 
 func (c *Client) Delete(item api.Item) error {
-	return api.Delete(c.httpc, item)
+	h := c.acquire()
+	err := api.Delete(h, item)
+	c.release(h)
+	return err
 }
 
 func (c *Client) Rename(item api.Item, newName string) error {
+	h := c.acquire()
+	var err error
 	if item.IsFolder == 1 {
-		return api.RenameFolder(c.httpc, item, newName)
+		err = api.RenameFolder(h, item, newName)
 	} else {
-		return api.RenameFile(c.httpc, item, newName, false)
+		err = api.RenameFile(h, item, newName, false)
 	}
+	c.release(h)
+	return err
 }
 
 func (c *Client) Move(targetFolderID uint64, items ...api.Item) error {
-	return api.Move(c.httpc, targetFolderID, items...)
+	h := c.acquire()
+	err := api.Move(h, targetFolderID, items...)
+	c.release(h)
+	return err
 }
 
 func (c *Client) GetPlainSize(item api.Item) (int64, error) {
 	if err := c.defaultAuthChecks(item.Crypto == 1); err != nil {
 		return 0, err
 	}
-	return api.GetPlainSize(c.httpc, item, item.Crypto == 1)
+	h := c.acquire()
+	sz, err := api.GetPlainSize(h, item, item.Crypto == 1)
+	c.release(h)
+	return sz, err
 }
