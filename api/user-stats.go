@@ -6,7 +6,13 @@ import (
 	"strings"
 )
 
-type StorageStats struct {
+type UserStats struct {
+	Error     bool  `json:"error"`
+	Storage   Stats `json:"storage"`
+	Bandwidth Stats `json:"bandwidth"`
+}
+
+type Stats struct {
 	Error     bool    `json:"error"`
 	Used      uint64  `json:"used"`
 	UsedHuman string  `json:"used_human"`
@@ -18,26 +24,26 @@ type StorageStats struct {
 	PcentRaw  float64 `json:"pcent_raw"`
 }
 
-func GetStorageStats(h *HTTPClient) (*StorageStats, error) {
+func GetUserStats(h *HTTPClient) (*UserStats, error) {
 	if h == nil {
 		h = NewHTTPClientWithEnv()
 	}
 	if strings.TrimSpace(h.bearer) == "" {
 		return nil, fmt.Errorf("missing bearer token; call Login first")
 	}
-	status, _, body, err := h.httpGET("/stats-storage")
+	status, _, body, err := h.httpGET("/user-stats")
 	if err != nil {
 		return nil, err
 	}
 	if status >= 400 {
-		return nil, fmt.Errorf("stats-storage request failed with status %d", status)
+		return nil, fmt.Errorf("user-stats request failed with status %d", status)
 	}
-	var resp StorageStats
+	var resp UserStats
 	if err := json.Unmarshal(body, &resp); err != nil {
 		return nil, err
 	}
 	if resp.Error {
-		return nil, fmt.Errorf("stats-storage error")
+		return nil, fmt.Errorf("user-stats unmarshal error")
 	}
 	return &resp, nil
 }
