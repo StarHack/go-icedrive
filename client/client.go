@@ -213,3 +213,10 @@ func (c *Client) GetPlainSize(item api.Item) (int64, error) {
 	}
 	return api.GetPlainSize(c.httpc, item, item.Crypto == 1)
 }
+
+func (c *Client) GetStorageStats() (*api.StorageStats, error) {
+	if err := c.defaultAuthChecks(false); err != nil {
+		return nil, err
+	}
+	return api.GetStorageStats(c.httpc)
+}
