@@ -155,6 +155,11 @@ func Move(h *HTTPClient, folderId uint64, items ...Item) error {
 	_ = w.WriteField("request", "move")
 	_ = w.WriteField("items", strings.Join(itemUIDs, ","))
 	_ = w.WriteField("folderId", strconv.FormatUint(folderId, 10))
+
+	if len(items) > 0 && items[0].Crypto == 1 {
+		_ = w.WriteField("crypto", "1")
+	}
+
 	if err := w.Close(); err != nil {
 		return err
 	}
