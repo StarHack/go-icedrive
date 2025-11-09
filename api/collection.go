@@ -76,9 +76,6 @@ func GetCollection(h *HTTPClient, folderID uint64, cType CollectionType) (*Colle
 		return nil, err
 	}
 	if resp.Error {
-		if h.debug {
-			fmt.Println(string(body))
-		}
 		return nil, fmt.Errorf("collection error")
 	}
 

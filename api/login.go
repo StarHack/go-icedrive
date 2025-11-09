@@ -5,7 +5,6 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
-	"fmt"
 	"mime/multipart"
 )
 
@@ -65,9 +64,6 @@ func LoginWithUsernameAndPassword(h *HTTPClient, email, password, hmacKeyHex str
 
 	code, _, body, err := h.httpPOST("/login", ct, buf.Bytes())
 	if code >= 200 && code < 400 && err == nil {
-		if h.debug {
-			fmt.Println(string(body))
-		}
 		var lr LoginResponse
 		if err = json.Unmarshal(body, &lr); err == nil && lr.Token != "" {
 			userData, err := UserData(h)

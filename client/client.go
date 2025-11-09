@@ -11,7 +11,6 @@ type Client struct {
 	httpc          *api.HTTPClient
 	hmacKeyHex     string
 	user           *api.User
-	Token          string
 	cryptoPassword string
 	CryptoSalt     string
 	CryptoHexKey   string
@@ -56,7 +55,6 @@ func (c *Client) LoginWithUsernameAndPassword(email, password string) error {
 		return err
 	}
 	c.user = user
-	c.Token = c.httpc.GetBearerToken()
 	return nil
 }
 
@@ -66,8 +64,15 @@ func (c *Client) LoginWithBearerToken(token string) error {
 		return err
 	}
 	c.user = user
-	c.Token = c.httpc.GetBearerToken()
 	return nil
+}
+
+func (c *Client) GetToken() string {
+	return c.httpc.GetBearerToken()
+}
+
+func (c *Client) SetToken(token string) {
+	c.httpc.SetBearerToken(token)
 }
 
 func (c *Client) ListFolder(folderID uint64) ([]api.Item, error) {
