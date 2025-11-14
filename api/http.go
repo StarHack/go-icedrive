@@ -4,15 +4,32 @@ import (
 	"bytes"
 	"compress/gzip"
 	"compress/zlib"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/cookiejar"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/andybalholm/brotli"
 )
+
+// APIError represents a standard error response from the API
+type APIError struct {
+	Error   bool   `json:"error"`
+	Code    int    `json:"code"`
+	Message string `json:"message"`
+}
+
+// IsAuthError checks if the error is an authentication error (code 1001)
+func (e *APIError) IsAuthError() bool {
+	return e.Error && e.Code == 1001
+}
+
+// ReloginFunc is a function that can re-authenticate the client
+type ReloginFunc func() error
 
 type HTTPClient struct {
 	c            *http.Client
@@ -22,6 +39,10 @@ type HTTPClient struct {
 	headers      string
 	apiBase      string
 	cryptoKeyHex string
+
+	// For automatic re-login
+	reloginFunc  ReloginFunc
+	reloginMutex sync.Mutex
 }
 
 func NewHTTPClientWithEnv() *HTTPClient {
@@ -198,79 +219,155 @@ func decodeBody(res *http.Response) ([]byte, error) {
 	return io.ReadAll(r)
 }
 
+// withRetryOnAuthError wraps an HTTP operation and retries it after re-login if auth fails
+func (h *HTTPClient) withRetryOnAuthError(operation func() (int, http.Header, []byte, error)) (int, http.Header, []byte, error) {
+	status, headers, body, err := operation()
+
+	// If the request succeeded at HTTP level, check for API-level auth errors
+	if err == nil && body != nil {
+		apiErr, parseErr := tryParseAPIError(body)
+		if h.debug && parseErr == nil && apiErr != nil {
+			fmt.Printf(">>> API Response: error=%v, code=%d, message=%s\n", apiErr.Error, apiErr.Code, apiErr.Message)
+		}
+
+		if parseErr == nil && apiErr != nil && apiErr.IsAuthError() {
+			// Authentication error detected - try to re-login once
+			fmt.Println(">>> ⚠️  Authentication error detected (code 1001)!")
+
+			if h.reloginFunc != nil {
+				// Clear the invalid token before attempting re-login
+				fmt.Println(">>> 🔄 Clearing invalid token and attempting automatic re-login...")
+				oldToken := h.bearer
+				h.bearer = ""
+
+				h.reloginMutex.Lock()
+				reloginErr := h.reloginFunc()
+				h.reloginMutex.Unlock()
+
+				if reloginErr == nil {
+					// Re-login succeeded, retry the original operation
+					fmt.Println(">>> ✅ Re-login succeeded! Retrying request...")
+					return operation()
+				} else {
+					// Re-login failed, restore the old token (even though it's invalid)
+					h.bearer = oldToken
+					fmt.Printf(">>> ❌ Re-login failed: %v\n", reloginErr)
+				}
+			} else {
+				fmt.Println(">>> ❌ No re-login function configured!")
+			}
+		}
+	}
+
+	return status, headers, body, err
+}
+
 func (h *HTTPClient) httpGET(u string) (int, http.Header, []byte, error) {
 	if h == nil || h.c == nil {
 		h = NewHTTPClientWithEnv()
 	}
 
-	req, _ := http.NewRequest("GET", h.apiBase+u, nil)
-	h.addHeaders(req)
-	h.printHeaders(req)
-	res, err := h.c.Do(req)
-	if err != nil {
-		return 0, nil, nil, err
-	}
-	defer res.Body.Close()
-	b, err := decodeBody(res)
-	if err != nil {
-		return res.StatusCode, res.Header, nil, err
-	}
-	if h.debug {
-		fmt.Println("<<< HTTP Response:", res.Status)
-		for k, v := range res.Header {
-			fmt.Printf("%s: %s\n", k, strings.Join(v, "; "))
+	operation := func() (int, http.Header, []byte, error) {
+		req, _ := http.NewRequest("GET", h.apiBase+u, nil)
+		h.addHeaders(req)
+		h.printHeaders(req)
+		res, err := h.c.Do(req)
+		if err != nil {
+			return 0, nil, nil, err
 		}
-		fmt.Println("<<< Body")
-		fmt.Println(string(b))
-		fmt.Println("<<< End Response")
+		defer res.Body.Close()
+		b, err := decodeBody(res)
+		if err != nil {
+			return res.StatusCode, res.Header, nil, err
+		}
+		if h.debug {
+			fmt.Println("<<< HTTP Response:", res.Status)
+			for k, v := range res.Header {
+				fmt.Printf("%s: %s\n", k, strings.Join(v, "; "))
+			}
+			fmt.Println("<<< Body")
+			fmt.Println(string(b))
+			fmt.Println("<<< End Response")
+		}
+		return res.StatusCode, res.Header, b, nil
 	}
-	return res.StatusCode, res.Header, b, nil
+
+	return h.withRetryOnAuthError(operation)
 }
 
 func (h *HTTPClient) httpPOST(u string, contentType string, body []byte) (int, http.Header, []byte, error) {
 	if h == nil || h.c == nil {
 		h = NewHTTPClientWithEnv()
 	}
-	req, _ := http.NewRequest("POST", h.apiBase+u, bytes.NewReader(body))
-	h.addHeaders(req)
-	if contentType != "" {
-		req.Header.Set("Content-Type", contentType)
+
+	operation := func() (int, http.Header, []byte, error) {
+		req, _ := http.NewRequest("POST", h.apiBase+u, bytes.NewReader(body))
+		h.addHeaders(req)
+		if contentType != "" {
+			req.Header.Set("Content-Type", contentType)
+		}
+		h.printHeaders(req)
+		res, err := h.c.Do(req)
+		if err != nil {
+			return 0, nil, nil, err
+		}
+		defer res.Body.Close()
+		b, err := decodeBody(res)
+		if err != nil {
+			return res.StatusCode, res.Header, nil, err
+		}
+		return res.StatusCode, res.Header, b, nil
 	}
-	h.printHeaders(req)
-	res, err := h.c.Do(req)
-	if err != nil {
-		return 0, nil, nil, err
-	}
-	defer res.Body.Close()
-	b, err := decodeBody(res)
-	if err != nil {
-		return res.StatusCode, res.Header, nil, err
-	}
-	return res.StatusCode, res.Header, b, nil
+
+	return h.withRetryOnAuthError(operation)
 }
 
 func (h *HTTPClient) httpPOSTReader(u string, contentType string, body io.Reader) (int, http.Header, []byte, error) {
 	if h == nil || h.c == nil {
 		h = NewHTTPClientWithEnv()
 	}
-	req, _ := http.NewRequest("POST", u, body)
-	h.addHeaders(req)
-	if contentType != "" {
-		req.Header.Set("Content-Type", contentType)
+
+	operation := func() (int, http.Header, []byte, error) {
+		req, _ := http.NewRequest("POST", u, body)
+		h.addHeaders(req)
+		if contentType != "" {
+			req.Header.Set("Content-Type", contentType)
+		}
+		h.printHeaders(req)
+		res, err := h.c.Do(req)
+		if err != nil {
+			return 0, nil, nil, err
+		}
+		defer res.Body.Close()
+		b, err := decodeBody(res)
+		if err != nil {
+			return res.StatusCode, res.Header, nil, err
+		}
+		return res.StatusCode, res.Header, b, nil
 	}
-	h.printHeaders(req)
-	res, err := h.c.Do(req)
-	if err != nil {
-		return 0, nil, nil, err
-	}
-	defer res.Body.Close()
-	b, err := decodeBody(res)
-	if err != nil {
-		return res.StatusCode, res.Header, nil, err
-	}
-	return res.StatusCode, res.Header, b, nil
+
+	return h.withRetryOnAuthError(operation)
 }
 
 func (h *HTTPClient) SetDebug(debug bool) {
 	h.debug = debug
+}
+
+// SetReloginFunc sets the function to call when authentication fails
+func (h *HTTPClient) SetReloginFunc(fn ReloginFunc) {
+	h.reloginMutex.Lock()
+	defer h.reloginMutex.Unlock()
+	h.reloginFunc = fn
+}
+
+// tryParseAPIError attempts to parse an API error from the response body
+func tryParseAPIError(body []byte) (*APIError, error) {
+	var apiErr APIError
+	if err := json.Unmarshal(body, &apiErr); err != nil {
+		return nil, err
+	}
+	if apiErr.Error {
+		return &apiErr, nil
+	}
+	return nil, nil
 }

@@ -14,6 +14,10 @@ type Client struct {
 	cryptoPassword string
 	CryptoSalt     string
 	CryptoHexKey   string
+
+	// Store credentials for automatic re-login
+	email    string
+	password string
 }
 
 func NewClient() *Client {
@@ -55,6 +59,21 @@ func (c *Client) LoginWithUsernameAndPassword(email, password string) error {
 		return err
 	}
 	c.user = user
+
+	// Store credentials for automatic re-login
+	c.email = email
+	c.password = password
+
+	// Set up automatic re-login function
+	c.httpc.SetReloginFunc(func() error {
+		newUser, reloginErr := api.LoginWithUsernameAndPassword(c.httpc, c.email, c.password, c.hmacKeyHex)
+		if reloginErr != nil {
+			return reloginErr
+		}
+		c.user = newUser
+		return nil
+	})
+
 	return nil
 }
 

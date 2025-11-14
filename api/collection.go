@@ -37,6 +37,8 @@ type Item struct {
 
 type CollectionResponse struct {
 	Error   bool   `json:"error"`
+	Code    int    `json:"code,omitempty"`    // Error code (e.g., 1001 for auth error)
+	Message string `json:"message,omitempty"` // Error message
 	ID      uint64 `json:"id"`
 	Access  string `json:"access"`
 	Results int    `json:"results"`
@@ -76,7 +78,10 @@ func GetCollection(h *HTTPClient, folderID uint64, cType CollectionType) (*Colle
 		return nil, err
 	}
 	if resp.Error {
-		return nil, fmt.Errorf("collection error")
+		if resp.Code != 0 {
+			return nil, fmt.Errorf("collection error (code %d): %s", resp.Code, resp.Message)
+		}
+		return nil, fmt.Errorf("collection error: %s", resp.Message)
 	}
 
 	if cType == CollectionCrypto {
