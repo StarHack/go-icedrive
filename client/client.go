@@ -7,8 +7,42 @@ import (
 	"github.com/StarHack/go-icedrive/api"
 )
 
+// pooledWriter wraps an io.WriteCloser and releases the HTTPClient back to the pool on Close
+type pooledWriter struct {
+	writer io.WriteCloser
+	pool   *api.HTTPClientPool
+	client *api.HTTPClient
+}
+
+func (pw *pooledWriter) Write(p []byte) (int, error) {
+	return pw.writer.Write(p)
+}
+
+func (pw *pooledWriter) Close() error {
+	err := pw.writer.Close()
+	pw.pool.Release(pw.client)
+	return err
+}
+
+// pooledReader wraps an io.ReadCloser and releases the HTTPClient back to the pool on Close
+type pooledReader struct {
+	reader io.ReadCloser
+	pool   *api.HTTPClientPool
+	client *api.HTTPClient
+}
+
+func (pr *pooledReader) Read(p []byte) (int, error) {
+	return pr.reader.Read(p)
+}
+
+func (pr *pooledReader) Close() error {
+	err := pr.reader.Close()
+	pr.pool.Release(pr.client)
+	return err
+}
+
 type Client struct {
-	httpc          *api.HTTPClient
+	pool           *api.HTTPClientPool
 	hmacKeyHex     string
 	user           *api.User
 	cryptoPassword string
@@ -21,12 +55,19 @@ type Client struct {
 }
 
 func NewClient() *Client {
-	var client = Client{httpc: api.NewHTTPClientWithEnv()}
-	client.hmacKeyHex = "436f6e67726174756c6174696f6e7320494620796f7520676f742054484953206661722121203b2921203a29"
+	return NewClientWithPoolSize(3) // Default to 3 concurrent connections
+}
+
+func NewClientWithPoolSize(poolSize int) *Client {
+	pool := api.NewHTTPClientPool(poolSize)
+	client := &Client{
+		pool:       pool,
+		hmacKeyHex: "436f6e67726174756c6174696f6e7320494620796f7520676f742054484953206661722121203b2921203a29",
+	}
 	client.SetDebug(false)
-	client.httpc.SetApiBase("https://apis.icedrive.net/v3/mobile")
-	client.httpc.SetHeaders("User-Agent: icedrive-ios/2.2.2")
-	return &client
+	pool.SetApiBase("https://apis.icedrive.net/v3/mobile")
+	pool.SetHeaders("User-Agent: icedrive-ios/2.2.2")
+	return client
 }
 
 func (c *Client) defaultAuthChecks(crypto bool) error {
@@ -40,21 +81,34 @@ func (c *Client) defaultAuthChecks(crypto bool) error {
 }
 
 func (c *Client) SetDebug(debug bool) {
-	c.httpc.SetDebug(debug)
+	c.pool.SetDebug(debug)
 }
 
 func (c *Client) SetCryptoPassword(cryptoPassword string) {
 	c.cryptoPassword = cryptoPassword
 	if c.CryptoSalt == "" {
-		_, salt, _ := api.FetchCryptoSaltAndStoredHash(c.httpc)
-		c.CryptoSalt = salt
+		// Acquire a client to fetch crypto salt
+		err := c.pool.WithClient(func(h *api.HTTPClient) error {
+			_, salt, err := api.FetchCryptoSaltAndStoredHash(h)
+			c.CryptoSalt = salt
+			return err
+		})
+		if err != nil {
+			// Handle error silently for backward compatibility
+			_ = err
+		}
 	}
 	c.CryptoHexKey, _ = api.DeriveCryptoKey(cryptoPassword, c.CryptoSalt)
-	c.httpc.SetCryptoKeyHex(c.CryptoHexKey)
+	c.pool.SetCryptoKeyHex(c.CryptoHexKey)
 }
 
 func (c *Client) LoginWithUsernameAndPassword(email, password string) error {
-	user, err := api.LoginWithUsernameAndPassword(c.httpc, email, password, c.hmacKeyHex)
+	var user *api.User
+	err := c.pool.WithClient(func(h *api.HTTPClient) error {
+		var loginErr error
+		user, loginErr = api.LoginWithUsernameAndPassword(h, email, password, c.hmacKeyHex)
+		return loginErr
+	})
 	if err != nil {
 		return err
 	}
@@ -65,8 +119,13 @@ func (c *Client) LoginWithUsernameAndPassword(email, password string) error {
 	c.password = password
 
 	// Set up automatic re-login function
-	c.httpc.SetReloginFunc(func() error {
-		newUser, reloginErr := api.LoginWithUsernameAndPassword(c.httpc, c.email, c.password, c.hmacKeyHex)
+	c.pool.SetReloginFunc(func() error {
+		var newUser *api.User
+		reloginErr := c.pool.WithClient(func(h *api.HTTPClient) error {
+			var loginErr error
+			newUser, loginErr = api.LoginWithUsernameAndPassword(h, c.email, c.password, c.hmacKeyHex)
+			return loginErr
+		})
 		if reloginErr != nil {
 			return reloginErr
 		}
@@ -78,7 +137,12 @@ func (c *Client) LoginWithUsernameAndPassword(email, password string) error {
 }
 
 func (c *Client) LoginWithBearerToken(token string) error {
-	user, err := api.LoginWithBearerToken(c.httpc, token)
+	var user *api.User
+	err := c.pool.WithClient(func(h *api.HTTPClient) error {
+		var loginErr error
+		user, loginErr = api.LoginWithBearerToken(h, token)
+		return loginErr
+	})
 	if err != nil {
 		return err
 	}
@@ -87,18 +151,23 @@ func (c *Client) LoginWithBearerToken(token string) error {
 }
 
 func (c *Client) GetToken() string {
-	return c.httpc.GetBearerToken()
+	return c.pool.GetBearerToken()
 }
 
 func (c *Client) SetToken(token string) {
-	c.httpc.SetBearerToken(token)
+	c.pool.SetBearerToken(token)
 }
 
 func (c *Client) ListFolder(folderID uint64) ([]api.Item, error) {
 	if err := c.defaultAuthChecks(false); err != nil {
 		return nil, err
 	}
-	response, err := api.GetCollection(c.httpc, folderID, api.CollectionCloud)
+	var response *api.CollectionResponse
+	err := c.pool.WithClient(func(h *api.HTTPClient) error {
+		var collErr error
+		response, collErr = api.GetCollection(h, folderID, api.CollectionCloud)
+		return collErr
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -109,7 +178,12 @@ func (c *Client) ListFolderEncrypted(folderID uint64) ([]api.Item, error) {
 	if err := c.defaultAuthChecks(true); err != nil {
 		return nil, err
 	}
-	response, err := api.GetCollection(c.httpc, folderID, api.CollectionCrypto)
+	var response *api.CollectionResponse
+	err := c.pool.WithClient(func(h *api.HTTPClient) error {
+		var collErr error
+		response, collErr = api.GetCollection(h, folderID, api.CollectionCrypto)
+		return collErr
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -120,7 +194,12 @@ func (c *Client) ListFolderTrash(folderID uint64) ([]api.Item, error) {
 	if err := c.defaultAuthChecks(false); err != nil {
 		return nil, err
 	}
-	response, err := api.GetCollection(c.httpc, folderID, api.CollectionTrash)
+	var response *api.CollectionResponse
+	err := c.pool.WithClient(func(h *api.HTTPClient) error {
+		var collErr error
+		response, collErr = api.GetCollection(h, folderID, api.CollectionTrash)
+		return collErr
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -128,119 +207,191 @@ func (c *Client) ListFolderTrash(folderID uint64) ([]api.Item, error) {
 }
 
 func (c *Client) ListVersions(item api.Item) ([]api.FileVersion, error) {
-	return api.ListVersions(c.httpc, item)
+	var versions []api.FileVersion
+	err := c.pool.WithClient(func(h *api.HTTPClient) error {
+		var listErr error
+		versions, listErr = api.ListVersions(h, item)
+		return listErr
+	})
+	return versions, err
 }
 
 func (c *Client) CreateFolder(parentID uint64, name string) error {
 	if err := c.defaultAuthChecks(false); err != nil {
 		return err
 	}
-	return api.CreateFolder(c.httpc, parentID, name, false)
+	return c.pool.WithClient(func(h *api.HTTPClient) error {
+		return api.CreateFolder(h, parentID, name, false)
+	})
 }
 
 func (c *Client) CreateFolderEncrypted(parentID uint64, name string) error {
 	if err := c.defaultAuthChecks(true); err != nil {
 		return err
 	}
-	return api.CreateFolder(c.httpc, parentID, name, true)
+	return c.pool.WithClient(func(h *api.HTTPClient) error {
+		return api.CreateFolder(h, parentID, name, true)
+	})
 }
 
 func (c *Client) UploadFile(folderID uint64, fileName string) error {
 	if err := c.defaultAuthChecks(false); err != nil {
 		return err
 	}
-	_, err := api.UploadFile(c.httpc, folderID, fileName)
-	return err
+	return c.pool.WithClient(func(h *api.HTTPClient) error {
+		_, err := api.UploadFile(h, folderID, fileName)
+		return err
+	})
 }
 
 func (c *Client) UploadFileEncrypted(folderID uint64, fileName string) error {
 	if err := c.defaultAuthChecks(true); err != nil {
 		return err
 	}
-	_, err := api.UploadEncryptedFile(c.httpc, folderID, fileName, c.CryptoHexKey)
-	return err
+	return c.pool.WithClient(func(h *api.HTTPClient) error {
+		_, err := api.UploadEncryptedFile(h, folderID, fileName, c.CryptoHexKey)
+		return err
+	})
 }
 
 func (c *Client) UploadFileWriter(folderID uint64, fileName string) (io.WriteCloser, error) {
 	if err := c.defaultAuthChecks(false); err != nil {
 		return nil, err
 	}
-	return api.NewUploadFileWriter(c.httpc, folderID, fileName)
+	// Note: Writers require a dedicated client that won't be released until Close()
+	client := c.pool.Acquire()
+	writer, err := api.NewUploadFileWriter(client, folderID, fileName)
+	if err != nil {
+		c.pool.Release(client)
+		return nil, err
+	}
+	// Wrap the writer to release the client when done
+	return &pooledWriter{writer: writer, pool: c.pool, client: client}, nil
 }
 
 func (c *Client) UploadFileEncryptedWriter(folderID uint64, fileName string) (io.WriteCloser, error) {
 	if err := c.defaultAuthChecks(true); err != nil {
 		return nil, err
 	}
-	return api.NewUploadFileEncryptedWriter(c.httpc, folderID, fileName, c.CryptoHexKey)
+	// Note: Writers require a dedicated client that won't be released until Close()
+	client := c.pool.Acquire()
+	writer, err := api.NewUploadFileEncryptedWriter(client, folderID, fileName, c.CryptoHexKey)
+	if err != nil {
+		c.pool.Release(client)
+		return nil, err
+	}
+	// Wrap the writer to release the client when done
+	return &pooledWriter{writer: writer, pool: c.pool, client: client}, nil
 }
 
 func (c *Client) DownloadFile(item api.Item, destPath string) error {
 	if err := c.defaultAuthChecks(false); err != nil {
 		return err
 	}
-	return api.DownloadFile(c.httpc, item, destPath, false)
+	return c.pool.WithClient(func(h *api.HTTPClient) error {
+		return api.DownloadFile(h, item, destPath, false)
+	})
 }
 
 func (c *Client) DownloadFileStream(item api.Item) (io.ReadCloser, error) {
 	if err := c.defaultAuthChecks(false); err != nil {
 		return nil, err
 	}
-	return api.OpenDownloadStream(c.httpc, item, false)
+	// Streams require a dedicated client that won't be released until Close()
+	client := c.pool.Acquire()
+	reader, err := api.OpenDownloadStream(client, item, false)
+	if err != nil {
+		c.pool.Release(client)
+		return nil, err
+	}
+	return &pooledReader{reader: reader, pool: c.pool, client: client}, nil
 }
 
 func (c *Client) DownloadFileEncrypted(item api.Item, destPath string) error {
 	if err := c.defaultAuthChecks(true); err != nil {
 		return err
 	}
-	return api.DownloadFile(c.httpc, item, destPath, true)
+	return c.pool.WithClient(func(h *api.HTTPClient) error {
+		return api.DownloadFile(h, item, destPath, true)
+	})
 }
 
 func (c *Client) DownloadFileEncryptedStream(item api.Item) (io.ReadCloser, error) {
 	if err := c.defaultAuthChecks(true); err != nil {
 		return nil, err
 	}
-	return api.OpenDownloadStream(c.httpc, item, true)
+	// Streams require a dedicated client that won't be released until Close()
+	client := c.pool.Acquire()
+	reader, err := api.OpenDownloadStream(client, item, true)
+	if err != nil {
+		c.pool.Release(client)
+		return nil, err
+	}
+	return &pooledReader{reader: reader, pool: c.pool, client: client}, nil
 }
 
 func (c *Client) TrashItem(item api.Item) error {
-	return api.TrashAdd(c.httpc, item)
+	return c.pool.WithClient(func(h *api.HTTPClient) error {
+		return api.TrashAdd(h, item)
+	})
 }
 
 func (c *Client) TrashEraseAll() error {
-	return api.TrashEraseAll(c.httpc)
+	return c.pool.WithClient(func(h *api.HTTPClient) error {
+		return api.TrashEraseAll(h)
+	})
 }
 
 func (c *Client) RestoreTrashedItem(item api.Item) error {
-	return api.TrashRestore(c.httpc, item)
+	return c.pool.WithClient(func(h *api.HTTPClient) error {
+		return api.TrashRestore(h, item)
+	})
 }
 
 func (c *Client) Delete(item api.Item) error {
-	return api.Delete(c.httpc, item)
+	return c.pool.WithClient(func(h *api.HTTPClient) error {
+		return api.Delete(h, item)
+	})
 }
 
 func (c *Client) Rename(item api.Item, newName string) error {
-	if item.IsFolder == 1 {
-		return api.RenameFolder(c.httpc, item, newName)
-	} else {
-		return api.RenameFile(c.httpc, item, newName, false)
-	}
+	return c.pool.WithClient(func(h *api.HTTPClient) error {
+		if item.IsFolder == 1 {
+			return api.RenameFolder(h, item, newName)
+		} else {
+			return api.RenameFile(h, item, newName, false)
+		}
+	})
 }
 
 func (c *Client) Move(targetFolderID uint64, items ...api.Item) error {
-	return api.Move(c.httpc, targetFolderID, items...)
+	return c.pool.WithClient(func(h *api.HTTPClient) error {
+		return api.Move(h, targetFolderID, items...)
+	})
 }
 
 func (c *Client) GetPlainSize(item api.Item) (int64, error) {
 	if err := c.defaultAuthChecks(item.Crypto == 1); err != nil {
 		return 0, err
 	}
-	return api.GetPlainSize(c.httpc, item, item.Crypto == 1)
+	var size int64
+	err := c.pool.WithClient(func(h *api.HTTPClient) error {
+		var sizeErr error
+		size, sizeErr = api.GetPlainSize(h, item, item.Crypto == 1)
+		return sizeErr
+	})
+	return size, err
 }
 
 func (c *Client) GetUserStats() (*api.UserStats, error) {
 	if err := c.defaultAuthChecks(false); err != nil {
 		return nil, err
 	}
-	return api.GetUserStats(c.httpc)
+	var stats *api.UserStats
+	err := c.pool.WithClient(func(h *api.HTTPClient) error {
+		var statsErr error
+		stats, statsErr = api.GetUserStats(h)
+		return statsErr
+	})
+	return stats, err
 }
