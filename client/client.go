@@ -72,13 +72,21 @@ func NewClientWithPoolSize(poolSize int) *Client {
 }
 
 func (c *Client) defaultAuthChecks(crypto bool) error {
-	if c.user == nil {
-		return errors.New("login first")
+	if c.user != nil {
+		if crypto && c.CryptoHexKey == "" {
+			return errors.New("set crypto password first")
+		}
+		return nil
 	}
-	if crypto && c.CryptoHexKey == "" {
-		return errors.New("set crypto password first")
+
+	if c.email != "" && c.password != "" {
+		if crypto && c.CryptoHexKey == "" {
+			return errors.New("set crypto password first")
+		}
+		return nil
 	}
-	return nil
+
+	return errors.New("login first")
 }
 
 func (c *Client) SetDebug(debug bool) {
@@ -158,6 +166,7 @@ func (c *Client) relogin() error {
 		return fmt.Errorf("no credentials available for re-login")
 	}
 
+	fmt.Println(">>> 🔄 Starting re-login process...")
 	var newUser *api.User
 	err := c.pool.WithClient(func(h *api.HTTPClient) error {
 		var loginErr error
@@ -165,9 +174,12 @@ func (c *Client) relogin() error {
 		return loginErr
 	})
 	if err != nil {
+		fmt.Printf(">>> ❌ Re-login failed: %v\n", err)
 		return err
 	}
+
 	c.user = newUser
+	fmt.Printf(">>> ✅ Re-login succeeded! User: %s (%s)\n", newUser.FullName, newUser.Email)
 	return nil
 }
 
