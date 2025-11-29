@@ -2,6 +2,7 @@ package client
 
 import (
 	"errors"
+	"fmt"
 	"io"
 
 	"github.com/StarHack/go-icedrive/api"
@@ -114,24 +115,10 @@ func (c *Client) LoginWithUsernameAndPassword(email, password string) error {
 	}
 	c.user = user
 
-	// Store credentials for automatic re-login
 	c.email = email
 	c.password = password
 
-	// Set up automatic re-login function
-	c.pool.SetReloginFunc(func() error {
-		var newUser *api.User
-		reloginErr := c.pool.WithClient(func(h *api.HTTPClient) error {
-			var loginErr error
-			newUser, loginErr = api.LoginWithUsernameAndPassword(h, c.email, c.password, c.hmacKeyHex)
-			return loginErr
-		})
-		if reloginErr != nil {
-			return reloginErr
-		}
-		c.user = newUser
-		return nil
-	})
+	c.pool.SetReloginFunc(c.relogin)
 
 	return nil
 }
@@ -147,6 +134,40 @@ func (c *Client) LoginWithBearerToken(token string) error {
 		return err
 	}
 	c.user = user
+
+	// If we have credentials, set up re-login
+	if c.email != "" && c.password != "" {
+		c.pool.SetReloginFunc(c.relogin)
+	}
+
+	return nil
+}
+
+// SetCredentials stores login credentials for automatic re-login
+// This should be called after LoginWithBearerToken if you want automatic re-login capability
+func (c *Client) SetCredentials(email, password string) {
+	c.email = email
+	c.password = password
+	if c.user != nil {
+		c.pool.SetReloginFunc(c.relogin)
+	}
+}
+
+func (c *Client) relogin() error {
+	if c.email == "" || c.password == "" {
+		return fmt.Errorf("no credentials available for re-login")
+	}
+
+	var newUser *api.User
+	err := c.pool.WithClient(func(h *api.HTTPClient) error {
+		var loginErr error
+		newUser, loginErr = api.LoginWithUsernameAndPassword(h, c.email, c.password, c.hmacKeyHex)
+		return loginErr
+	})
+	if err != nil {
+		return err
+	}
+	c.user = newUser
 	return nil
 }
 

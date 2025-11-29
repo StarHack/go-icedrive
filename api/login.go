@@ -83,10 +83,10 @@ func LoginWithBearerToken(h *HTTPClient, token string) (*User, error) {
 	if h == nil {
 		h = NewHTTPClientWithEnv()
 	}
+	h.SetBearerToken(token)
 	userData, err := UserData(h)
 	if err != nil {
 		return nil, err
 	}
-	h.SetBearerToken(token)
 	return userData, nil
 }
