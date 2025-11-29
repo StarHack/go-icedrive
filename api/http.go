@@ -223,6 +223,34 @@ func decodeBody(res *http.Response) ([]byte, error) {
 func (h *HTTPClient) withRetryOnAuthError(operation func() (int, http.Header, []byte, error)) (int, http.Header, []byte, error) {
 	status, headers, body, err := operation()
 
+	// Check for HTTP-level auth errors (401 Unauthorized, 403 Forbidden)
+	if err == nil && (status == 401 || status == 403) {
+		fmt.Printf(">>> ⚠️  HTTP authentication error detected (status %d)!\n", status)
+
+		if h.reloginFunc != nil {
+			// Clear the invalid token before attempting re-login
+			fmt.Println(">>> 🔄 Clearing invalid token and attempting automatic re-login...")
+			oldToken := h.bearer
+			h.bearer = ""
+
+			h.reloginMutex.Lock()
+			reloginErr := h.reloginFunc()
+			h.reloginMutex.Unlock()
+
+			if reloginErr == nil {
+				// Re-login succeeded, retry the original operation
+				fmt.Println(">>> ✅ Re-login succeeded! Retrying request...")
+				return operation()
+			} else {
+				// Re-login failed, restore the old token (even though it's invalid)
+				h.bearer = oldToken
+				fmt.Printf(">>> ❌ Re-login failed: %v\n", reloginErr)
+			}
+		} else {
+			fmt.Println(">>> ❌ No re-login function configured!")
+		}
+	}
+
 	// If the request succeeded at HTTP level, check for API-level auth errors
 	if err == nil && body != nil {
 		apiErr, parseErr := tryParseAPIError(body)
