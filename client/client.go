@@ -167,16 +167,21 @@ func (c *Client) relogin() error {
 	}
 
 	fmt.Println(">>> 🔄 Starting re-login process...")
+
+	h := api.NewHTTPClientWithEnv()
+	h.SetApiBase(c.pool.GetApiBase())
+	h.SetHeaders(c.pool.GetHeaders())
+	h.SetDebug(c.pool.GetDebug())
+
 	var newUser *api.User
-	err := c.pool.WithClient(func(h *api.HTTPClient) error {
-		var loginErr error
-		newUser, loginErr = api.LoginWithUsernameAndPassword(h, c.email, c.password, c.hmacKeyHex)
+	var loginErr error
+	newUser, loginErr = api.LoginWithUsernameAndPassword(h, c.email, c.password, c.hmacKeyHex)
+	if loginErr != nil {
+		fmt.Printf(">>> ❌ Re-login failed: %v\n", loginErr)
 		return loginErr
-	})
-	if err != nil {
-		fmt.Printf(">>> ❌ Re-login failed: %v\n", err)
-		return err
 	}
+
+	c.pool.SetBearerToken(h.GetBearerToken())
 
 	c.user = newUser
 	fmt.Printf(">>> ✅ Re-login succeeded! User: %s (%s)\n", newUser.FullName, newUser.Email)

@@ -168,6 +168,27 @@ func (p *HTTPClientPool) SetReloginFunc(fn ReloginFunc) {
 	}
 }
 
+// GetApiBase returns the current API base URL
+func (p *HTTPClientPool) GetApiBase() string {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return p.apiBase
+}
+
+// GetHeaders returns the current headers
+func (p *HTTPClientPool) GetHeaders() string {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return p.headers
+}
+
+// GetDebug returns the current debug flag
+func (p *HTTPClientPool) GetDebug() bool {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return p.debug
+}
+
 // WithClient executes a function with an acquired client and automatically releases it
 func (p *HTTPClientPool) WithClient(fn func(*HTTPClient) error) error {
 	client := p.Acquire()
