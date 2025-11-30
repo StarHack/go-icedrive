@@ -169,9 +169,11 @@ func (c *Client) relogin() error {
 	fmt.Println(">>> 🔄 Starting re-login process...")
 
 	h := api.NewHTTPClientWithEnv()
-	h.SetApiBase(c.pool.GetApiBase())
-	h.SetHeaders(c.pool.GetHeaders())
-	h.SetDebug(c.pool.GetDebug())
+	h.SetApiBase("https://apis.icedrive.net/v3/mobile")
+	h.SetHeaders("User-Agent: icedrive-ios/2.2.2")
+	if c.pool != nil {
+		h.SetDebug(c.pool.GetDebug())
+	}
 
 	var newUser *api.User
 	var loginErr error
@@ -181,7 +183,9 @@ func (c *Client) relogin() error {
 		return loginErr
 	}
 
-	c.pool.SetBearerToken(h.GetBearerToken())
+	if c.pool != nil {
+		c.pool.SetBearerToken(h.GetBearerToken())
+	}
 
 	c.user = newUser
 	fmt.Printf(">>> ✅ Re-login succeeded! User: %s (%s)\n", newUser.FullName, newUser.Email)
