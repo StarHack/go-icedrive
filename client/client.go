@@ -56,7 +56,9 @@ type Client struct {
 }
 
 func NewClient() *Client {
-	return NewClientWithPoolSize(3, 120) // Default to 3 concurrent connections and 120 requests per minute
+	defaultConcurrentConnections := 3
+	defaultRequestsPerMinute := 200.0
+	return NewClientWithPoolSize(defaultConcurrentConnections, defaultRequestsPerMinute)
 }
 
 func NewClientWithPoolSize(poolSize int, requestsPerMinute float64) *Client {
