@@ -56,11 +56,11 @@ type Client struct {
 }
 
 func NewClient() *Client {
-	return NewClientWithPoolSize(3) // Default to 3 concurrent connections
+	return NewClientWithPoolSize(3, 60) // Default to 3 concurrent connections and 60 requests per minute
 }
 
-func NewClientWithPoolSize(poolSize int) *Client {
-	pool := api.NewHTTPClientPool(poolSize)
+func NewClientWithPoolSize(poolSize int, requestsPerMinute float64) *Client {
+	pool := api.NewHTTPClientPool(poolSize, requestsPerMinute)
 	client := &Client{
 		pool:       pool,
 		hmacKeyHex: "436f6e67726174756c6174696f6e7320494620796f7520676f742054484953206661722121203b2921203a29",
@@ -168,25 +168,22 @@ func (c *Client) relogin() error {
 
 	fmt.Println(">>> 🔄 Starting re-login process...")
 
-	h := api.NewHTTPClientWithEnv()
-	h.SetApiBase("https://apis.icedrive.net/v3/mobile")
-	h.SetHeaders("User-Agent: icedrive-ios/2.2.2")
-	if c.pool != nil {
-		h.SetDebug(c.pool.GetDebug())
-	}
-
 	var newUser *api.User
-	var loginErr error
-	newUser, loginErr = api.LoginWithUsernameAndPassword(h, c.email, c.password, c.hmacKeyHex)
-	if loginErr != nil {
-		fmt.Printf(">>> ❌ Re-login failed: %v\n", loginErr)
+	var newToken string
+	err := c.pool.WithClient(func(h *api.HTTPClient) error {
+		var loginErr error
+		newUser, loginErr = api.LoginWithUsernameAndPassword(h, c.email, c.password, c.hmacKeyHex)
+		if loginErr == nil {
+			newToken = h.GetBearerToken()
+		}
 		return loginErr
+	})
+	if err != nil {
+		fmt.Printf(">>> ❌ Re-login failed: %v\n", err)
+		return err
 	}
 
-	if c.pool != nil {
-		c.pool.SetBearerToken(h.GetBearerToken())
-	}
-
+	c.pool.SetBearerToken(newToken)
 	c.user = newUser
 	fmt.Printf(">>> ✅ Re-login succeeded! User: %s (%s)\n", newUser.FullName, newUser.Email)
 	return nil

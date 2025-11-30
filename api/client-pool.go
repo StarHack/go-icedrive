@@ -1,7 +1,10 @@
 package api
 
 import (
+	"context"
 	"sync"
+
+	"golang.org/x/time/rate"
 )
 
 // HTTPClientPool manages a pool of HTTPClient instances for concurrent requests
@@ -18,10 +21,11 @@ type HTTPClientPool struct {
 	// Shared state across all clients
 	bearer       string
 	cryptoKeyHex string
+	limiter      *rate.Limiter
 }
 
 // NewHTTPClientPool creates a new pool with the specified number of clients
-func NewHTTPClientPool(size int) *HTTPClientPool {
+func NewHTTPClientPool(size int, requestsPerMinute float64) *HTTPClientPool {
 	if size <= 0 {
 		size = 3 // Default to 3 concurrent connections
 	}
@@ -30,6 +34,7 @@ func NewHTTPClientPool(size int) *HTTPClientPool {
 		clients: make([]*HTTPClient, size),
 		pool:    make(chan *HTTPClient, size),
 		size:    size,
+		limiter: rate.NewLimiter(rate.Limit(requestsPerMinute/60), 1),
 	}
 
 	// Initialize all clients
@@ -191,6 +196,9 @@ func (p *HTTPClientPool) GetDebug() bool {
 
 // WithClient executes a function with an acquired client and automatically releases it
 func (p *HTTPClientPool) WithClient(fn func(*HTTPClient) error) error {
+	if err := p.limiter.Wait(context.Background()); err != nil {
+		return err
+	}
 	client := p.Acquire()
 	defer p.Release(client)
 	return fn(client)
