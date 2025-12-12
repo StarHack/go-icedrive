@@ -114,7 +114,7 @@ func (c *Client) SetCryptoPassword(cryptoPassword string) {
 }
 
 func (c *Client) LoginWithUsernameAndPassword(email, password string) error {
-	fmt.Printf(">>> 🔑 Logging in with username and password for %s...\n", email)
+	fmt.Printf(">>> 🔑 Logging in with username and password...\n")
 	var user *api.User
 	err := c.pool.WithClient(func(h *api.HTTPClient) error {
 		var loginErr error
