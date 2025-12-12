@@ -131,7 +131,7 @@ func (c *Client) LoginWithUsernameAndPassword(email, password string) error {
 
 	c.pool.SetReloginFunc(c.relogin)
 
-	fmt.Printf(">>> ✅ Login successful! User: %s (%s)\n", user.FullName, user.Email)
+	fmt.Printf(">>> ✅ Login successful!\n")
 	return nil
 }
 
@@ -153,7 +153,7 @@ func (c *Client) LoginWithBearerToken(token string) error {
 		c.pool.SetReloginFunc(c.relogin)
 	}
 
-	fmt.Printf(">>> ✅ Login successful! User: %s (%s)\n", user.FullName, user.Email)
+	fmt.Printf(">>> ✅ Login successful!\n")
 	return nil
 }
 
@@ -193,7 +193,7 @@ func (c *Client) relogin() error {
 	// Update the pool's bearer token so all clients get the new token
 	c.pool.SetBearerToken(h.GetBearerToken())
 	c.user = newUser
-	fmt.Printf(">>> ✅ Re-login succeeded! User: %s (%s)\n", newUser.FullName, newUser.Email)
+	fmt.Println(">>> ✅ Re-login succeeded!")
 	return nil
 }
 
