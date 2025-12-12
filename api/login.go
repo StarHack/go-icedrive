@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"mime/multipart"
 )
 
@@ -39,8 +40,11 @@ func LoginWithUsernameAndPassword(h *HTTPClient, email, password, hmacKeyHex str
 		h = NewHTTPClientWithEnv()
 	}
 	sts, _, stBody, err := h.httpGET("/current-server-time")
-	if err != nil || sts < 200 || sts >= 400 {
+	if err != nil {
 		return nil, err
+	}
+	if sts < 200 || sts >= 400 {
+		return nil, fmt.Errorf("failed to get server time: HTTP %d", sts)
 	}
 	var st struct {
 		TimeUnix uint64 `json:"time_unix"`
@@ -63,20 +67,25 @@ func LoginWithUsernameAndPassword(h *HTTPClient, email, password, hmacKeyHex str
 	ct := w.FormDataContentType()
 
 	code, _, body, err := h.httpPOST("/login", ct, buf.Bytes())
-	if code >= 200 && code < 400 && err == nil {
-		var lr LoginResponse
-		if err = json.Unmarshal(body, &lr); err == nil && lr.Token != "" {
-			userData, err := UserData(h)
-			if err != nil {
-				return nil, err
-			}
-			h.SetBearerToken(lr.Token)
-			return userData, nil
-		} else {
-			return nil, err
-		}
+	if err != nil {
+		return nil, err
 	}
-	return nil, err
+	if code < 200 || code >= 400 {
+		return nil, fmt.Errorf("login failed: HTTP %d", code)
+	}
+	var lr LoginResponse
+	if err = json.Unmarshal(body, &lr); err != nil {
+		return nil, err
+	}
+	if lr.Token == "" {
+		return nil, fmt.Errorf("login response missing token")
+	}
+	userData, err := UserData(h)
+	if err != nil {
+		return nil, err
+	}
+	h.SetBearerToken(lr.Token)
+	return userData, nil
 }
 
 func LoginWithBearerToken(h *HTTPClient, token string) (*User, error) {
