@@ -114,6 +114,7 @@ func (c *Client) SetCryptoPassword(cryptoPassword string) {
 }
 
 func (c *Client) LoginWithUsernameAndPassword(email, password string) error {
+	fmt.Printf(">>> 🔑 Logging in with username and password for %s...\n", email)
 	var user *api.User
 	err := c.pool.WithClient(func(h *api.HTTPClient) error {
 		var loginErr error
@@ -130,10 +131,12 @@ func (c *Client) LoginWithUsernameAndPassword(email, password string) error {
 
 	c.pool.SetReloginFunc(c.relogin)
 
+	fmt.Printf(">>> ✅ Login successful! User: %s (%s)\n", user.FullName, user.Email)
 	return nil
 }
 
 func (c *Client) LoginWithBearerToken(token string) error {
+	fmt.Println(">>> 🔑 Logging in with bearer token...")
 	var user *api.User
 	err := c.pool.WithClient(func(h *api.HTTPClient) error {
 		var loginErr error
@@ -150,6 +153,7 @@ func (c *Client) LoginWithBearerToken(token string) error {
 		c.pool.SetReloginFunc(c.relogin)
 	}
 
+	fmt.Printf(">>> ✅ Login successful! User: %s (%s)\n", user.FullName, user.Email)
 	return nil
 }
 

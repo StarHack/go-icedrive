@@ -227,15 +227,17 @@ func (h *HTTPClient) withRetryOnAuthError(operation func() (int, http.Header, []
 	if err == nil && (status == 401 || status == 403) {
 		fmt.Printf(">>> ⚠️  HTTP authentication error detected (status %d)!\n", status)
 
-		if h.reloginFunc != nil {
+		h.reloginMutex.Lock()
+		reloginFunc := h.reloginFunc
+		h.reloginMutex.Unlock()
+
+		if reloginFunc != nil {
 			// Clear the invalid token before attempting re-login
 			fmt.Println(">>> 🔄 Clearing invalid token and attempting automatic re-login...")
 			oldToken := h.bearer
 			h.bearer = ""
 
-			h.reloginMutex.Lock()
-			reloginErr := h.reloginFunc()
-			h.reloginMutex.Unlock()
+			reloginErr := reloginFunc()
 
 			if reloginErr == nil {
 				// Re-login succeeded, retry the original operation
@@ -262,15 +264,17 @@ func (h *HTTPClient) withRetryOnAuthError(operation func() (int, http.Header, []
 			// Authentication error detected - try to re-login once
 			fmt.Println(">>> ⚠️  Authentication error detected (code 1001)!")
 
-			if h.reloginFunc != nil {
+			h.reloginMutex.Lock()
+			reloginFunc := h.reloginFunc
+			h.reloginMutex.Unlock()
+
+			if reloginFunc != nil {
 				// Clear the invalid token before attempting re-login
 				fmt.Println(">>> 🔄 Clearing invalid token and attempting automatic re-login...")
 				oldToken := h.bearer
 				h.bearer = ""
 
-				h.reloginMutex.Lock()
-				reloginErr := h.reloginFunc()
-				h.reloginMutex.Unlock()
+				reloginErr := reloginFunc()
 
 				if reloginErr == nil {
 					// Re-login succeeded, retry the original operation
