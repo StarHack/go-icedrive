@@ -170,22 +170,24 @@ func (c *Client) relogin() error {
 
 	fmt.Println(">>> 🔄 Starting re-login process...")
 
+	// Create a standalone HTTP client for re-login to avoid circular dependency
+	// (relogin is called from within an HTTPClient that's already acquired from the pool)
+	h := api.NewHTTPClientWithEnv()
+	h.SetApiBase(c.pool.GetApiBase())
+	h.SetHeaders(c.pool.GetHeaders())
+	h.SetDebug(c.pool.GetDebug())
+	// Explicitly do NOT set relogin func on this client to avoid infinite recursion
+
 	var newUser *api.User
-	var newToken string
-	err := c.pool.WithClient(func(h *api.HTTPClient) error {
-		var loginErr error
-		newUser, loginErr = api.LoginWithUsernameAndPassword(h, c.email, c.password, c.hmacKeyHex)
-		if loginErr == nil {
-			newToken = h.GetBearerToken()
-		}
+	var loginErr error
+	newUser, loginErr = api.LoginWithUsernameAndPassword(h, c.email, c.password, c.hmacKeyHex)
+	if loginErr != nil {
+		fmt.Printf(">>> ❌ Re-login failed: %v\n", loginErr)
 		return loginErr
-	})
-	if err != nil {
-		fmt.Printf(">>> ❌ Re-login failed: %v\n", err)
-		return err
 	}
 
-	c.pool.SetBearerToken(newToken)
+	// Update the pool's bearer token so all clients get the new token
+	c.pool.SetBearerToken(h.GetBearerToken())
 	c.user = newUser
 	fmt.Printf(">>> ✅ Re-login succeeded! User: %s (%s)\n", newUser.FullName, newUser.Email)
 	return nil
