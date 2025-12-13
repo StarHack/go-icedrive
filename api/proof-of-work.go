@@ -2,14 +2,25 @@ package api
 
 import (
 	"crypto/hmac"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"sort"
 	"strconv"
 	"strings"
 )
+
+// POWChallenge represents the response from /pow-new endpoint
+type POWChallenge struct {
+	Challenge      string `json:"challenge"`
+	DifficultyBits int    `json:"difficultyBits"`
+	Exp            uint64 `json:"exp"`
+	Scope          string `json:"scope"`
+	Token          string `json:"token"`
+}
 
 // Payload is the inner proof-of-work payload.
 type Payload struct {
@@ -117,4 +128,107 @@ func ComputeProofOfWork(serverTimeSec uint64, hmacKeyHex string) (string, error)
 		return "", err
 	}
 	return base64.StdEncoding.EncodeToString(j), nil
+}
+
+// FetchPOWChallenge fetches a new proof-of-work challenge from the API
+func FetchPOWChallenge(h *HTTPClient) (*POWChallenge, error) {
+	if h == nil {
+		h = NewHTTPClientWithEnv()
+	}
+
+	// Prepare form data
+	payload := "app=ios&request=pow-new&scope=login"
+	code, _, body, err := h.httpPOST("/api", "application/x-www-form-urlencoded", []byte(payload))
+	if err != nil {
+		return nil, err
+	}
+	if code < 200 || code >= 400 {
+		return nil, fmt.Errorf("failed to fetch POW challenge: HTTP %d, body: %s", code, string(body))
+	}
+	var challenge POWChallenge
+	if err := json.Unmarshal(body, &challenge); err != nil {
+		return nil, err
+	}
+	return &challenge, nil
+}
+
+// SolvePOWChallenge solves a proof-of-work challenge by finding a nonce
+// 1. Decode challenge from base64
+// 2. Append random bytes (8-24 bytes)
+// 3. Append 4-byte counter (starts at 0, increments)
+// 4. Hash the entire byte array with SHA-256
+// 5. Check leading zero bits
+// Returns: base64-encoded nonce bytes, hex hash, error
+func SolvePOWChallenge(challenge *POWChallenge) (string, string, error) {
+	if challenge.DifficultyBits <= 0 || challenge.DifficultyBits > 256 {
+		return "", "", fmt.Errorf("invalid difficulty bits: %d", challenge.DifficultyBits)
+	}
+
+	challengeBytes, err := base64.RawURLEncoding.DecodeString(challenge.Challenge)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to decode challenge: %w", err)
+	}
+
+	nonceSize := 12
+	nonceBytes := make([]byte, nonceSize)
+	_, err = rand.Read(nonceBytes)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to generate random bytes: %w", err)
+	}
+
+	bufSize := len(challengeBytes) + nonceSize + 4
+	buf := make([]byte, bufSize)
+	copy(buf, challengeBytes)
+	copy(buf[len(challengeBytes):], nonceBytes)
+
+	counterOffset := len(challengeBytes) + nonceSize
+
+	// Brute force (proof of work): increment counter until we find valid hash
+	var counter uint32
+	for {
+		buf[counterOffset] = byte(counter >> 24)
+		buf[counterOffset+1] = byte(counter >> 16)
+		buf[counterOffset+2] = byte(counter >> 8)
+		buf[counterOffset+3] = byte(counter)
+
+		h := sha256.Sum256(buf)
+
+		if countLeadingZeroBits(h[:]) >= challenge.DifficultyBits {
+			nonceResult := make([]byte, nonceSize+4)
+			copy(nonceResult, nonceBytes)
+			nonceResult[nonceSize] = byte(counter >> 24)
+			nonceResult[nonceSize+1] = byte(counter >> 16)
+			nonceResult[nonceSize+2] = byte(counter >> 8)
+			nonceResult[nonceSize+3] = byte(counter)
+
+			nonceB64 := base64.RawURLEncoding.EncodeToString(nonceResult)
+			hashHex := hex.EncodeToString(h[:])
+			return nonceB64, hashHex, nil
+		}
+
+		counter++
+		if counter == 0 {
+			return "", "", fmt.Errorf("counter overflow without finding solution")
+		}
+	}
+}
+
+// countLeadingZeroBits counts the number of leading zero bits in a byte array
+func countLeadingZeroBits(data []byte) int {
+	count := 0
+	for i := 0; i < len(data); i++ {
+		b := data[i]
+		if b == 0 {
+			count += 8
+		} else {
+			for bit := 7; bit >= 0; bit-- {
+				if (b>>bit)&1 == 0 {
+					count++
+				} else {
+					return count
+				}
+			}
+		}
+	}
+	return count
 }

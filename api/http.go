@@ -177,21 +177,15 @@ func (h *HTTPClient) addHeaders(req *http.Request) {
 		req.Header.Set("Accept-Language", "en-US,en;q=0.5")
 	}
 	if req.Header.Get("Origin") == "" {
-		req.Header.Set("Origin", "https://icedrive.net")
+		//req.Header.Set("Origin", "https://icedrive.net")
 	}
 	if req.Header.Get("Referer") == "" {
-		req.Header.Set("Referer", "https://icedrive.net/")
+		//req.Header.Set("Referer", "https://icedrive.net/")
 	}
 }
 
 func (h *HTTPClient) printHeaders(req *http.Request) {
-	if h.debug {
-		fmt.Println(">>> HTTP Request:", req.Method, req.URL.String())
-		for k, v := range req.Header {
-			fmt.Printf("%s: %s\n", k, strings.Join(v, "; "))
-		}
-		fmt.Println(">>> End Headers")
-	}
+	// Debug logging disabled
 }
 
 func decodeBody(res *http.Response) ([]byte, error) {
@@ -225,15 +219,12 @@ func (h *HTTPClient) withRetryOnAuthError(operation func() (int, http.Header, []
 
 	// Check for HTTP-level auth errors (401 Unauthorized, 403 Forbidden)
 	if err == nil && (status == 401 || status == 403) {
-		fmt.Printf(">>> ⚠️  HTTP authentication error detected (status %d)!\n", status)
-
 		h.reloginMutex.Lock()
 		reloginFunc := h.reloginFunc
 		h.reloginMutex.Unlock()
 
 		if reloginFunc != nil {
 			// Clear the invalid token before attempting re-login
-			fmt.Println(">>> 🔄 Clearing invalid token and attempting automatic re-login...")
 			oldToken := h.bearer
 			h.bearer = ""
 
@@ -241,36 +232,26 @@ func (h *HTTPClient) withRetryOnAuthError(operation func() (int, http.Header, []
 
 			if reloginErr == nil {
 				// Re-login succeeded, retry the original operation
-				fmt.Println(">>> ✅ Re-login succeeded! Retrying request...")
 				return operation()
 			} else {
 				// Re-login failed, restore the old token (even though it's invalid)
 				h.bearer = oldToken
-				fmt.Printf(">>> ❌ Re-login failed: %v\n", reloginErr)
 			}
-		} else {
-			fmt.Println(">>> ❌ No re-login function configured!")
 		}
 	}
 
 	// If the request succeeded at HTTP level, check for API-level auth errors
 	if err == nil && body != nil {
 		apiErr, parseErr := tryParseAPIError(body)
-		if h.debug && parseErr == nil && apiErr != nil {
-			fmt.Printf(">>> API Response: error=%v, code=%d, message=%s\n", apiErr.Error, apiErr.Code, apiErr.Message)
-		}
 
 		if parseErr == nil && apiErr != nil && apiErr.IsAuthError() {
 			// Authentication error detected - try to re-login once
-			fmt.Println(">>> ⚠️  Authentication error detected (code 1001)!")
-
 			h.reloginMutex.Lock()
 			reloginFunc := h.reloginFunc
 			h.reloginMutex.Unlock()
 
 			if reloginFunc != nil {
 				// Clear the invalid token before attempting re-login
-				fmt.Println(">>> 🔄 Clearing invalid token and attempting automatic re-login...")
 				oldToken := h.bearer
 				h.bearer = ""
 
@@ -278,15 +259,11 @@ func (h *HTTPClient) withRetryOnAuthError(operation func() (int, http.Header, []
 
 				if reloginErr == nil {
 					// Re-login succeeded, retry the original operation
-					fmt.Println(">>> ✅ Re-login succeeded! Retrying request...")
 					return operation()
 				} else {
 					// Re-login failed, restore the old token (even though it's invalid)
 					h.bearer = oldToken
-					fmt.Printf(">>> ❌ Re-login failed: %v\n", reloginErr)
 				}
-			} else {
-				fmt.Println(">>> ❌ No re-login function configured!")
 			}
 		}
 	}
@@ -312,15 +289,7 @@ func (h *HTTPClient) httpGET(u string) (int, http.Header, []byte, error) {
 		if err != nil {
 			return res.StatusCode, res.Header, nil, err
 		}
-		if h.debug {
-			fmt.Println("<<< HTTP Response:", res.Status)
-			for k, v := range res.Header {
-				fmt.Printf("%s: %s\n", k, strings.Join(v, "; "))
-			}
-			fmt.Println("<<< Body")
-			fmt.Println(string(b))
-			fmt.Println("<<< End Response")
-		}
+		// Debug logging disabled
 		return res.StatusCode, res.Header, b, nil
 	}
 

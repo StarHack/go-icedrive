@@ -1,12 +1,12 @@
 package api
 
 import (
-	"bytes"
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"mime/multipart"
+	"net/url"
 )
 
 type LoginAuthData struct {
@@ -39,39 +39,52 @@ func LoginWithUsernameAndPassword(h *HTTPClient, email, password, hmacKeyHex str
 	if h == nil {
 		h = NewHTTPClientWithEnv()
 	}
-	sts, _, stBody, err := h.httpGET("/current-server-time")
+	// Fetch new POW challenge
+	challenge, err := FetchPOWChallenge(h)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to fetch POW challenge: %w", err)
 	}
-	if sts < 200 || sts >= 400 {
-		return nil, fmt.Errorf("failed to get server time: HTTP %d", sts)
-	}
-	var st struct {
-		TimeUnix uint64 `json:"time_unix"`
-	}
-	if err := json.Unmarshal(stBody, &st); err != nil {
-		return nil, err
-	}
-	formSecure, err := ComputeProofOfWork(st.TimeUnix, hmacKeyHex)
-	if err != nil {
-		return nil, err
-	}
-	var buf bytes.Buffer
-	w := multipart.NewWriter(&buf)
-	_ = w.SetBoundary("----geckoformboundary" + randHex(16))
-	_ = w.WriteField("e-mail", "")
-	_ = w.WriteField("email", email)
-	_ = w.WriteField("password", password)
-	_ = w.WriteField("form_secure", formSecure)
-	_ = w.Close()
-	ct := w.FormDataContentType()
 
-	code, _, body, err := h.httpPOST("/login", ct, buf.Bytes())
+	// Solve the challenge (returns base64-encoded nonce and hex hash)
+	nonceB64, hash, err := SolvePOWChallenge(challenge)
+	if err != nil {
+		return nil, fmt.Errorf("failed to solve POW challenge: %w", err)
+	}
+
+	// Prepare the POW proof structure
+	powProof := map[string]interface{}{
+		"client_id":      "",
+		"token":          challenge.Token,
+		"challenge":      challenge.Challenge,
+		"ver":            "1",
+		"hash":           hash,
+		"nonce":          nonceB64,
+		"exp":            challenge.Exp,
+		"difficultyBits": challenge.DifficultyBits,
+		"scope":          challenge.Scope,
+	}
+	powProofBytes, err := json.Marshal(powProof)
+	if err != nil {
+		return nil, err
+	}
+	powProofStr := base64.StdEncoding.EncodeToString(powProofBytes)
+
+	// Prepare URL-encoded form data
+	formData := url.Values{}
+	formData.Set("password", password)
+	formData.Set("pow_proof", powProofStr)
+	formData.Set("request", "login")
+	formData.Set("email", email)
+	formData.Set("no_token_check", "true")
+	formData.Set("app", "ios")
+	payload := formData.Encode()
+
+	code, _, body, err := h.httpPOST("/api", "application/x-www-form-urlencoded", []byte(payload))
 	if err != nil {
 		return nil, err
 	}
 	if code < 200 || code >= 400 {
-		return nil, fmt.Errorf("login failed: HTTP %d", code)
+		return nil, fmt.Errorf("login failed: HTTP %d, body: %s", code, string(body))
 	}
 	var lr LoginResponse
 	if err = json.Unmarshal(body, &lr); err != nil {

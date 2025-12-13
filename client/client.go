@@ -69,7 +69,7 @@ func NewClientWithPoolSize(poolSize int, requestsPerMinute float64) *Client {
 	}
 	client.SetDebug(false)
 	pool.SetApiBase("https://apis.icedrive.net/v3/mobile")
-	pool.SetHeaders("User-Agent: icedrive-ios/2.2.2")
+	pool.SetHeaders("User-Agent: icedrive-ios/2.3.0")
 	return client
 }
 
@@ -115,6 +115,12 @@ func (c *Client) SetCryptoPassword(cryptoPassword string) {
 
 func (c *Client) LoginWithUsernameAndPassword(email, password string) error {
 	fmt.Printf(">>> 🔑 Logging in with username and password...\n")
+
+	// Temporarily enable debug for login to see what's happening
+	wasDebug := c.pool.GetDebug()
+	c.pool.SetDebug(true)
+	defer c.pool.SetDebug(wasDebug)
+
 	var user *api.User
 	err := c.pool.WithClient(func(h *api.HTTPClient) error {
 		var loginErr error
