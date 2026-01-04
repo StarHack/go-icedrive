@@ -259,6 +259,19 @@ func (c *Client) ListFolderTrash(folderID uint64) ([]api.Item, error) {
 	return response.Data, nil
 }
 
+func (c *Client) GetFolderProperties(folderUID string, crypto bool) (*api.FolderPropertiesResponse, error) {
+	if err := c.defaultAuthChecks(crypto); err != nil {
+		return nil, err
+	}
+	var response *api.FolderPropertiesResponse
+	err := c.pool.WithClient(func(h *api.HTTPClient) error {
+		var propErr error
+		response, propErr = api.GetFolderProperties(h, folderUID, crypto)
+		return propErr
+	})
+	return response, err
+}
+
 func (c *Client) ListVersions(item api.Item) ([]api.FileVersion, error) {
 	var versions []api.FileVersion
 	err := c.pool.WithClient(func(h *api.HTTPClient) error {
