@@ -1,13 +1,14 @@
 package api
 
 import (
+	"bytes"
 	"crypto/cipher"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -37,17 +38,16 @@ func GetDownloadURLs(h *HTTPClient, itemUIDs []string, crypto bool) ([]DownloadU
 	if strings.TrimSpace(h.bearer) == "" {
 		return nil, fmt.Errorf("missing bearer token; call Login first")
 	}
-	u, _ := url.Parse("/download-multi")
-	q := u.Query()
-	q.Set("items", strings.Join(itemUIDs, ","))
-	if crypto {
-		q.Set("crypto", "true")
-	} else {
-		q.Set("crypto", "false")
-	}
-	u.RawQuery = q.Encode()
 
-	status, _, body, err := h.httpGET(u.String())
+	var b bytes.Buffer
+	w := multipart.NewWriter(&b)
+	w.WriteField("items", strings.Join(itemUIDs, ","))
+	if crypto {
+		w.WriteField("crypto", "1")
+	}
+	w.Close()
+
+	status, _, body, err := h.httpPOSTReader("/download-multi", w.FormDataContentType(), &b)
 	if err != nil {
 		return nil, err
 	}
