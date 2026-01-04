@@ -58,8 +58,6 @@ func GetDownloadURLs(h *HTTPClient, itemUIDs []string, crypto bool) ([]DownloadU
 		}
 	}
 
-	fmt.Println(prefixedUIDs)
-
 	w.WriteField("items", strings.Join(prefixedUIDs, ","))
 	if crypto {
 		w.WriteField("crypto", "1")
@@ -103,7 +101,7 @@ func DownloadFile(h *HTTPClient, item Item, destPath string, crypted bool) error
 
 	destFilePath := filepath.Join(destPath, item.Filename)
 	tmp := destFilePath + ".part"
-	fmt.Println(tmp)
+
 	if err := os.MkdirAll(destPath, 0o755); err != nil {
 		return err
 	}
