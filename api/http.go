@@ -328,7 +328,7 @@ func (h *HTTPClient) httpPOSTReader(u string, contentType string, body io.Reader
 	}
 
 	operation := func() (int, http.Header, []byte, error) {
-		req, _ := http.NewRequest("POST", u, body)
+		req, _ := http.NewRequest("POST", h.apiBase+u, body)
 		h.addHeaders(req)
 		if contentType != "" {
 			req.Header.Set("Content-Type", contentType)
