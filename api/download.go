@@ -27,8 +27,10 @@ type DownloadURLEntry struct {
 }
 
 type DownloadMultiResponse struct {
-	Error bool               `json:"error"`
-	Urls  []DownloadURLEntry `json:"urls"`
+	Error   bool               `json:"error"`
+	Code    int                `json:"code"`
+	Message string             `json:"message"`
+	Urls    []DownloadURLEntry `json:"urls"`
 }
 
 func GetDownloadURLs(h *HTTPClient, itemUIDs []string, crypto bool) ([]DownloadURLEntry, error) {
@@ -39,11 +41,30 @@ func GetDownloadURLs(h *HTTPClient, itemUIDs []string, crypto bool) ([]DownloadU
 		return nil, fmt.Errorf("missing bearer token; call Login first")
 	}
 
+	for _, uid := range itemUIDs {
+		if strings.Contains(uid, "folder") {
+			return nil, fmt.Errorf("GetDownloadURLs called with folder UID: %s", uid)
+		}
+	}
+
 	var b bytes.Buffer
 	w := multipart.NewWriter(&b)
-	w.WriteField("items", strings.Join(itemUIDs, ","))
+	prefixedUIDs := make([]string, len(itemUIDs))
+	for i, uid := range itemUIDs {
+		if !strings.HasPrefix(uid, "file-") {
+			prefixedUIDs[i] = "file-" + uid
+		} else {
+			prefixedUIDs[i] = uid
+		}
+	}
+
+	fmt.Println(prefixedUIDs)
+
+	w.WriteField("items", strings.Join(prefixedUIDs, ","))
 	if crypto {
 		w.WriteField("crypto", "1")
+	} else {
+		w.WriteField("crypto", "0")
 	}
 	w.Close()
 
@@ -57,10 +78,10 @@ func GetDownloadURLs(h *HTTPClient, itemUIDs []string, crypto bool) ([]DownloadU
 
 	var resp DownloadMultiResponse
 	if err := json.Unmarshal(body, &resp); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to unmarshal response: %v, body: %s", err, string(body))
 	}
 	if resp.Error {
-		return nil, fmt.Errorf("download-multi error")
+		return nil, fmt.Errorf("download-multi error: %s (code %d)", resp.Message, resp.Code)
 	}
 	if len(resp.Urls) == 0 {
 		return nil, fmt.Errorf("download-multi returned no urls")
@@ -83,7 +104,7 @@ func DownloadFile(h *HTTPClient, item Item, destPath string, crypted bool) error
 	destFilePath := filepath.Join(destPath, item.Filename)
 	tmp := destFilePath + ".part"
 	fmt.Println(tmp)
-	if err := os.MkdirAll(filepath.Dir(destPath), 0o755); err != nil {
+	if err := os.MkdirAll(destPath, 0o755); err != nil {
 		return err
 	}
 	out, err := os.Create(tmp)
