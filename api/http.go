@@ -276,7 +276,11 @@ func (h *HTTPClient) httpGET(u string) (int, http.Header, []byte, error) {
 	}
 
 	operation := func() (int, http.Header, []byte, error) {
-		req, _ := http.NewRequest("GET", h.apiBase+u, nil)
+		url := u
+		if strings.HasPrefix(url, "/") {
+			url = h.apiBase + u
+		}
+		req, _ := http.NewRequest("GET", url, nil)
 		h.addHeaders(req)
 		h.printHeaders(req)
 		res, err := h.c.Do(req)
@@ -301,7 +305,11 @@ func (h *HTTPClient) httpPOST(u string, contentType string, body []byte) (int, h
 	}
 
 	operation := func() (int, http.Header, []byte, error) {
-		req, _ := http.NewRequest("POST", h.apiBase+u, bytes.NewReader(body))
+		url := u
+		if strings.HasPrefix(url, "/") {
+			url = h.apiBase + u
+		}
+		req, _ := http.NewRequest("POST", url, bytes.NewReader(body))
 		h.addHeaders(req)
 		if contentType != "" {
 			req.Header.Set("Content-Type", contentType)
