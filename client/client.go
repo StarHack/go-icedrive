@@ -69,7 +69,7 @@ func NewClientWithPoolSize(poolSize int, requestsPerMinute float64) *Client {
 	}
 	client.SetDebug(false)
 	pool.SetApiBase("https://apis.icedrive.net/v3/mobile")
-	pool.SetHeaders("User-Agent: icedrive-ios/2.3.0")
+	pool.SetHeaders("User-Agent: icedrive-ios/2.3.1")
 	return client
 }
 
