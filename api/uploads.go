@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -73,7 +74,38 @@ func GetUploadEndpoints(h *HTTPClient) ([]string, error) {
 	if h == nil {
 		h = NewHTTPClientWithEnv()
 	}
-	status, _, body, err := h.httpGET("/geo-fileserver-list")
+
+	// Fetch new POW challenge
+	challenge, err := FetchPOWChallenge(h, "geo-fileserver-list")
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch POW challenge: %w", err)
+	}
+
+	// Solve the challenge
+	nonceB64, hash, err := SolvePOWChallenge(challenge)
+	if err != nil {
+		return nil, fmt.Errorf("failed to solve POW challenge: %w", err)
+	}
+
+	// Prepare the POW proof structure
+	powProof := map[string]interface{}{
+		"client_id":      "",
+		"token":          challenge.Token,
+		"challenge":      challenge.Challenge,
+		"ver":            "1",
+		"hash":           hash,
+		"nonce":          nonceB64,
+		"exp":            challenge.Exp,
+		"difficultyBits": challenge.DifficultyBits,
+		"scope":          challenge.Scope,
+	}
+	powProofBytes, err := json.Marshal(powProof)
+	if err != nil {
+		return nil, err
+	}
+	powProofStr := base64.StdEncoding.EncodeToString(powProofBytes)
+
+	status, _, body, err := h.httpGET("/geo-fileserver-list?app=ios&pow_proof=" + powProofStr)
 	if err != nil {
 		return nil, err
 	}

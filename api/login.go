@@ -40,7 +40,7 @@ func LoginWithUsernameAndPassword(h *HTTPClient, email, password, hmacKeyHex str
 		h = NewHTTPClientWithEnv()
 	}
 	// Fetch new POW challenge
-	challenge, err := FetchPOWChallenge(h)
+	challenge, err := FetchPOWChallenge(h, "login")
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch POW challenge: %w", err)
 	}

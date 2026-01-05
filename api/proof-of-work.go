@@ -131,13 +131,13 @@ func ComputeProofOfWork(serverTimeSec uint64, hmacKeyHex string) (string, error)
 }
 
 // FetchPOWChallenge fetches a new proof-of-work challenge from the API
-func FetchPOWChallenge(h *HTTPClient) (*POWChallenge, error) {
+func FetchPOWChallenge(h *HTTPClient, scope string) (*POWChallenge, error) {
 	if h == nil {
 		h = NewHTTPClientWithEnv()
 	}
 
 	// Prepare form data
-	payload := "app=ios&request=pow-new&scope=login"
+	payload := "app=ios&request=pow-new&scope=" + scope
 	code, _, body, err := h.httpPOST("/api", "application/x-www-form-urlencoded", []byte(payload))
 	if err != nil {
 		return nil, err
