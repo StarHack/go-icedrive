@@ -78,13 +78,22 @@ func GetUploadEndpoints(h *HTTPClient) ([]string, error) {
 		return nil, err
 	}
 	if status >= 400 {
+		if h.debug {
+			fmt.Printf("DEBUG: geo-fileserver-list failed with status %d, body: %s\n", status, string(body))
+		}
 		return nil, fmt.Errorf("geo-fileserver-list failed with status %d", status)
 	}
 	var resp GeoFileserverList
 	if err := json.Unmarshal(body, &resp); err != nil {
+		if h.debug {
+			fmt.Printf("DEBUG: failed to unmarshal geo-fileserver-list response: %v, body: %s\n", err, string(body))
+		}
 		return nil, err
 	}
 	if resp.Error {
+		if h.debug {
+			fmt.Printf("DEBUG: geo-fileserver-list API error: %v\n", resp)
+		}
 		return nil, fmt.Errorf("geo-fileserver-list error")
 	}
 	return resp.UploadEndpoints, nil
