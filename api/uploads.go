@@ -105,26 +105,45 @@ func GetUploadEndpoints(h *HTTPClient) ([]string, error) {
 	}
 	powProofStr := base64.StdEncoding.EncodeToString(powProofBytes)
 
-	status, _, body, err := h.httpGET("/geo-fileserver-list?app=ios&pow_proof=" + powProofStr)
+	if h.debug {
+		fmt.Printf("DEBUG: POW Challenge: %+v\n", challenge)
+		fmt.Printf("DEBUG: Solved Nonce: %s, Hash: %s\n", nonceB64, hash)
+		fmt.Printf("DEBUG: POW Proof JSON: %s\n", string(powProofBytes))
+	}
+
+	status, headers, body, err := h.httpGET("/geo-fileserver-list?app=ios&pow_proof=" + powProofStr)
 	if err != nil {
 		return nil, err
 	}
 	if status >= 400 {
 		if h.debug {
-			fmt.Printf("DEBUG: geo-fileserver-list failed with status %d, body: %s\n", status, string(body))
+			fmt.Printf("DEBUG: geo-fileserver-list request failed\n")
+			fmt.Printf("DEBUG: Request URL: %s/geo-fileserver-list?app=ios&pow_proof=%s\n", h.apiBase, powProofStr)
+			fmt.Printf("DEBUG: POW Proof: %s\n", string(powProofBytes))
+			fmt.Printf("DEBUG: Response Status: %d\n", status)
+			fmt.Printf("DEBUG: Response Headers: %v\n", headers)
+			fmt.Printf("DEBUG: Response Body: %s\n", string(body))
 		}
 		return nil, fmt.Errorf("geo-fileserver-list failed with status %d", status)
 	}
 	var resp GeoFileserverList
 	if err := json.Unmarshal(body, &resp); err != nil {
 		if h.debug {
-			fmt.Printf("DEBUG: failed to unmarshal geo-fileserver-list response: %v, body: %s\n", err, string(body))
+			fmt.Printf("DEBUG: Failed to unmarshal geo-fileserver-list response\n")
+			fmt.Printf("DEBUG: Response Status: %d\n", status)
+			fmt.Printf("DEBUG: Response Headers: %v\n", headers)
+			fmt.Printf("DEBUG: Response Body: %s\n", string(body))
+			fmt.Printf("DEBUG: Unmarshal Error: %v\n", err)
 		}
 		return nil, err
 	}
 	if resp.Error {
 		if h.debug {
-			fmt.Printf("DEBUG: geo-fileserver-list API error: %v\n", resp)
+			fmt.Printf("DEBUG: geo-fileserver-list API returned error\n")
+			fmt.Printf("DEBUG: Response Status: %d\n", status)
+			fmt.Printf("DEBUG: Response Headers: %v\n", headers)
+			fmt.Printf("DEBUG: Response Body: %s\n", string(body))
+			fmt.Printf("DEBUG: Parsed Response: %+v\n", resp)
 		}
 		return nil, fmt.Errorf("geo-fileserver-list error")
 	}
