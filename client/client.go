@@ -314,10 +314,6 @@ func (c *Client) UploadFile(folderID uint64, fileName string) error {
 	if err := c.defaultAuthChecks(false); err != nil {
 		return err
 	}
-	wasDebug := c.pool.GetDebug()
-	// Temporarily enable debug for upload to see what's happening
-	c.pool.SetDebug(true)
-	defer c.pool.SetDebug(wasDebug)
 	return c.pool.WithClient(func(h *api.HTTPClient) error {
 		_, err := api.UploadFile(h, folderID, fileName)
 		return err
