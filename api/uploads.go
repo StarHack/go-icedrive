@@ -75,6 +75,34 @@ func GetUploadEndpoints(h *HTTPClient) ([]string, error) {
 		h = NewHTTPClientWithEnv()
 	}
 
+	// Check cache first (5 minute TTL)
+	h.uploadEndpointsMutex.RLock()
+	if len(h.uploadEndpoints) > 0 && time.Since(h.uploadEndpointsTime) < 5*time.Minute {
+		endpoints := h.uploadEndpoints
+		h.uploadEndpointsMutex.RUnlock()
+		if h.debug {
+			fmt.Printf("DEBUG: Using cached upload endpoints (age: %v)\n", time.Since(h.uploadEndpointsTime))
+		}
+		return endpoints, nil
+	}
+	h.uploadEndpointsMutex.RUnlock()
+
+	// Acquire write lock to fetch new endpoints
+	h.uploadEndpointsMutex.Lock()
+	defer h.uploadEndpointsMutex.Unlock()
+
+	// Double-check in case another goroutine already fetched while we waited for lock
+	if len(h.uploadEndpoints) > 0 && time.Since(h.uploadEndpointsTime) < 5*time.Minute {
+		if h.debug {
+			fmt.Printf("DEBUG: Using cached upload endpoints (age: %v, updated by another goroutine)\n", time.Since(h.uploadEndpointsTime))
+		}
+		return h.uploadEndpoints, nil
+	}
+
+	if h.debug {
+		fmt.Printf("DEBUG: Fetching new upload endpoints (cache age: %v)\n", time.Since(h.uploadEndpointsTime))
+	}
+
 	// Fetch new POW challenge
 	challenge, err := FetchPOWChallenge(h, "geo-fileserver-list")
 	if err != nil {
@@ -147,6 +175,15 @@ func GetUploadEndpoints(h *HTTPClient) ([]string, error) {
 		}
 		return nil, fmt.Errorf("geo-fileserver-list error")
 	}
+
+	// Update cache
+	h.uploadEndpoints = resp.UploadEndpoints
+	h.uploadEndpointsTime = time.Now()
+
+	if h.debug {
+		fmt.Printf("DEBUG: Cached %d upload endpoints (valid for 5 minutes)\n", len(resp.UploadEndpoints))
+	}
+
 	return resp.UploadEndpoints, nil
 }
 

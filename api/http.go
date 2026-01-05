@@ -42,6 +42,11 @@ type HTTPClient struct {
 	// For automatic re-login
 	reloginFunc  ReloginFunc
 	reloginMutex sync.Mutex
+
+	// Upload endpoints cache
+	uploadEndpoints      []string
+	uploadEndpointsTime  time.Time
+	uploadEndpointsMutex sync.RWMutex
 }
 
 func NewHTTPClientWithEnv() *HTTPClient {
