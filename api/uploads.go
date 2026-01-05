@@ -111,7 +111,7 @@ func GetUploadEndpoints(h *HTTPClient) ([]string, error) {
 		fmt.Printf("DEBUG: POW Proof JSON: %s\n", string(powProofBytes))
 	}
 
-	status, headers, body, err := h.httpGET("/geo-fileserver-list?app=ios&pow_proof=" + powProofStr)
+	status, headers, body, err := h.httpGET("/geo-fileserver-list&app=ios&pow_proof=" + powProofStr)
 	if err != nil {
 		return nil, err
 	}
