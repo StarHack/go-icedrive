@@ -114,14 +114,10 @@ func (c *Client) SetCryptoPassword(cryptoPassword string) {
 }
 
 func (c *Client) LoginWithUsernameAndPassword(email, password string) error {
-	wasDebug := c.pool.GetDebug()
-	if wasDebug {
+	debugFlag := c.pool.GetDebug()
+	if debugFlag {
 		fmt.Printf(">>> 🔑 Logging in with username and password...\n")
 	}
-
-	// Temporarily enable debug for login to see what's happening
-	c.pool.SetDebug(true)
-	defer c.pool.SetDebug(wasDebug)
 
 	var user *api.User
 	err := c.pool.WithClient(func(h *api.HTTPClient) error {
@@ -139,7 +135,7 @@ func (c *Client) LoginWithUsernameAndPassword(email, password string) error {
 
 	c.pool.SetReloginFunc(c.relogin)
 
-	if wasDebug {
+	if debugFlag {
 		fmt.Printf(">>> ✅ Login successful!\n")
 	}
 	return nil
@@ -324,10 +320,6 @@ func (c *Client) UploadFileEncrypted(folderID uint64, fileName string) error {
 	if err := c.defaultAuthChecks(true); err != nil {
 		return err
 	}
-	wasDebug := c.pool.GetDebug()
-	// Temporarily enable debug for upload to see what's happening
-	c.pool.SetDebug(true)
-	defer c.pool.SetDebug(wasDebug)
 	return c.pool.WithClient(func(h *api.HTTPClient) error {
 		_, err := api.UploadEncryptedFile(h, folderID, fileName, c.CryptoHexKey)
 		return err
@@ -340,8 +332,7 @@ func (c *Client) UploadFileWriter(folderID uint64, fileName string) (io.WriteClo
 	}
 	// Note: Writers require a dedicated client that won't be released until Close()
 	client := c.pool.Acquire()
-	// Temporarily enable debug for upload to see what's happening
-	client.SetDebug(true)
+
 	writer, err := api.NewUploadFileWriter(client, folderID, fileName)
 	if err != nil {
 		c.pool.Release(client)
@@ -357,8 +348,7 @@ func (c *Client) UploadFileEncryptedWriter(folderID uint64, fileName string) (io
 	}
 	// Note: Writers require a dedicated client that won't be released until Close()
 	client := c.pool.Acquire()
-	// Temporarily enable debug for upload to see what's happening
-	client.SetDebug(true)
+
 	writer, err := api.NewUploadFileEncryptedWriter(client, folderID, fileName, c.CryptoHexKey)
 	if err != nil {
 		c.pool.Release(client)
